@@ -1,0 +1,11 @@
+build/
+*.dll
+*.so
+*.dylib
+*.pdb
+*.ilk
+*.exp
+*.lib
+.DS_Store
+Thumbs.db
+.claude/settings.local.json

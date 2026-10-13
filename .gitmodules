@@ -1,0 +1,3 @@
+[submodule "third_party/dsk_tools"]
+	path = third_party/dsk_tools
+	url = https://github.com/Ptr314/dsk_tools.git

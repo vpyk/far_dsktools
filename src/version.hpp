@@ -1,0 +1,6 @@
+#pragma once
+
+#define PLUGIN_VERSION_MAJOR 1
+#define PLUGIN_VERSION_MINOR 0
+#define PLUGIN_VERSION_BUILD 0
+#define PLUGIN_VERSION_STR   L"1.0.0"
