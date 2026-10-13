@@ -372,6 +372,23 @@ static bool detect_image(const std::wstring &path, DetectedImage &out, std::wstr
     return true;
 }
 
+// Short filesystem name for the panel title
+static std::wstring fs_name(dsk_tools::FS fs)
+{
+    switch (fs)
+    {
+    case dsk_tools::FS::DOS33:    return L"DOS3.3";
+    case dsk_tools::FS::Sprite:   return L"SpriteOS";
+    case dsk_tools::FS::CPM:      return L"CP/M";
+    case dsk_tools::FS::FAT:      return L"FAT";
+    case dsk_tools::FS::Iskra226: return L"Iskra-226";
+    case dsk_tools::FS::ProDOS:   return L"ProDOS";
+    case dsk_tools::FS::Onix:     return L"Onix";
+    case dsk_tools::FS::RT11:     return L"RT-11";
+    default:                      return L"?";
+    }
+}
+
 // Loads the image and mounts its filesystem. Returns nullptr on failure;
 // the error is shown to the user unless `silent`.
 static HANDLE open_image(const DetectedImage &di, bool silent)
@@ -410,6 +427,8 @@ static HANDLE open_image(const DetectedImage &di, bool silent)
     panel.image      = std::move(img);
     panel.filesystem = std::move(fs);
     panel.cpmUsers   = panel.filesystem->get_fs() == dsk_tools::FS::CPM;
+    panel.title      = L" DskTools:" + fs_name(panel.filesystem->get_fs())
+                     + L":" + extract_filename(di.path);
 
     r = refresh_dir(panel);
     if (!r)
@@ -599,16 +618,15 @@ extern "C" void WINAPI GetOpenPanelInfoW(struct OpenPanelInfo *Info)
     auto it = g_Panels.find(reinterpret_cast<intptr_t>(Info->hPanel));
     if (it == g_Panels.end()) return;
 
-    static std::wstring s_title;
-    s_title = L" " + extract_filename(it->second.hostPath);
+    const std::wstring &title = it->second.title;
 
     Info->StructSize       = sizeof(OpenPanelInfo);
     Info->Flags            = OPIF_SHOWPRESERVECASE | OPIF_ADDDOTS;
     Info->HostFile         = it->second.hostPath.c_str();
     // Empty CurDir at the root lets FAR close the panel on ".." and return to the host file
     Info->CurDir           = it->second.currentDir == L"/" ? L"" : it->second.currentDir.c_str();
-    Info->Format           = s_title.c_str();
-    Info->PanelTitle       = s_title.c_str();
+    Info->Format           = title.c_str();
+    Info->PanelTitle       = title.c_str();
     Info->InfoLines        = nullptr;
     Info->InfoLinesNumber  = 0;
     Info->DescrFiles       = nullptr;

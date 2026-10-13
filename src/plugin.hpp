@@ -12,6 +12,7 @@ struct PluginPanel
     std::wstring                                  currentDir;   // "/" or "/A/B" (CurDir for FAR)
     std::vector<std::wstring>                     dirStack;     // displayed names of entered directories
     std::wstring                                  hostPath;
+    std::wstring                                  title;        // " DskTools:<FS>:<image>"
     std::unique_ptr<dsk_tools::diskImage>         image;
     std::unique_ptr<dsk_tools::fileSystem>        filesystem;
     dsk_tools::Files                              files;        // what the panel shows
