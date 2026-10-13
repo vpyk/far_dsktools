@@ -3,6 +3,7 @@
 #include "version.hpp"
 #include "diskdefs_embed.h"
 
+#include <algorithm>
 #include <cstring>
 #include <map>
 #include <set>
@@ -58,12 +59,56 @@ static std::wstring to_wide(const std::string &s)
     return r;
 }
 
+// Retro filesystems allow characters and names that Windows does not. The panel shows
+// the same safe name that extraction writes, so F3/F4/F5 and the panel always agree.
+static std::wstring sanitize_name(const std::wstring &name)
+{
+    std::wstring r = name;
+    for (auto &c : r)
+        if (c < 0x20 || wcschr(L"<>:\"/\\|?*", c))
+            c = L'_';
+    // Windows drops trailing dots and spaces
+    for (size_t i = r.size(); i > 0 && (r[i - 1] == L'.' || r[i - 1] == L' '); --i)
+        r[i - 1] = L'_';
+    if (r.empty())
+        return L"_";
+
+    // Reserved device names, with or without an extension
+    std::wstring base = r.substr(0, r.find(L'.'));
+    static const wchar_t *const reserved[] = { L"CON", L"PRN", L"AUX", L"NUL" };
+    bool isReserved = false;
+    for (auto *n : reserved)
+        isReserved |= _wcsicmp(base.c_str(), n) == 0;
+    if (base.size() == 4 && iswdigit(base[3]) && base[3] != L'0'
+        && (_wcsnicmp(base.c_str(), L"COM", 3) == 0 || _wcsnicmp(base.c_str(), L"LPT", 3) == 0))
+        isReserved = true;
+    if (isReserved)
+        r.insert(base.size(), L"_");
+    return r;
+}
+
+// Display/extraction names for a listing: sanitized and unique within it
+// (Windows names are case-insensitive), a clash gets "~2", "~3"... before the extension
 static std::vector<std::wstring> build_wide_names(const dsk_tools::Files &files)
 {
     std::vector<std::wstring> names;
     names.reserve(files.size());
+    std::set<std::wstring> used;
+    auto key = [](std::wstring s) { CharUpperBuffW(&s[0], static_cast<DWORD>(s.size())); return s; };
     for (const auto &f : files)
-        names.push_back(to_wide(f.name));
+    {
+        std::wstring name = sanitize_name(to_wide(f.name));
+        if (used.count(key(name)))
+        {
+            auto dot = f.is_dir ? std::wstring::npos : name.rfind(L'.');
+            std::wstring stem = name.substr(0, dot);
+            std::wstring ext  = (dot == std::wstring::npos) ? L"" : name.substr(dot);
+            for (int n = 2; used.count(key(name)); ++n)
+                name = stem + L"~" + std::to_wstring(n) + ext;
+        }
+        used.insert(key(name));
+        names.push_back(name);
+    }
     return names;
 }
 
@@ -175,11 +220,23 @@ static void build_cpm_view(PluginPanel &panel)
     panel.currentDir = panel.cpmUser ? L"/" + cpm_user_dir(panel.cpmUser) : L"/";
 }
 
+// dir() of the current directory without the ".." entry some filesystems add
+// (DOS 3.3, FAT, ProDOS, Onix, Sprite OS): FAR shows its own with OPIF_ADDDOTS
+static dsk_tools::Result list_dir(dsk_tools::fileSystem &fs, dsk_tools::Files &files)
+{
+    auto r = fs.dir(files, false);
+    if (r)
+        files.erase(std::remove_if(files.begin(), files.end(),
+                                   [](const dsk_tools::UniversalFile &f) { return f.name == ".."; }),
+                    files.end());
+    return r;
+}
+
 // Re-reads the current directory from the filesystem
 static dsk_tools::Result refresh_dir(PluginPanel &panel)
 {
     dsk_tools::Files files;
-    auto r = panel.filesystem->dir(files, false);
+    auto r = list_dir(*panel.filesystem, files);
     if (!r)
     {
         // On error, keep old listing but update wideNames anyway
@@ -197,6 +254,66 @@ static dsk_tools::Result refresh_dir(PluginPanel &panel)
         panel.wideNames = build_wide_names(panel.files);
     }
     return r;
+}
+
+static void update_current_dir(PluginPanel &panel)
+{
+    panel.currentDir = L"/";
+    for (size_t i = 0; i < panel.dirStack.size(); ++i)
+        panel.currentDir += (i ? L"/" : L"") + panel.dirStack[i];
+}
+
+// SetDirectoryW for hierarchical filesystems. Dir is "..", a name from the current
+// listing, or a path ("/A/B", "A/B"); names are matched against the displayed
+// (sanitized) names, so a directory is entered through its UniversalFile, not by name.
+static bool set_dir(PluginPanel &panel, const wchar_t *dir)
+{
+    std::wstring path = dir ? dir : L"";
+    bool ok = true;
+
+    if (path.empty() || path[0] == L'/' || path[0] == L'\\')
+    {
+        while (!panel.filesystem->is_root())
+            panel.filesystem->cd_up();
+        panel.dirStack.clear();
+    }
+
+    size_t start = 0;
+    while (ok && start <= path.size())
+    {
+        size_t end = path.find_first_of(L"/\\", start);
+        if (end == std::wstring::npos) end = path.size();
+        std::wstring name = path.substr(start, end - start);
+        start = end + 1;
+
+        if (name.empty() || name == L".")
+            continue;
+        if (name == L"..")
+        {
+            if (!panel.dirStack.empty())
+            {
+                panel.filesystem->cd_up();
+                panel.dirStack.pop_back();
+            }
+            continue;
+        }
+
+        // The listing of the directory we are in now
+        if (!refresh_dir(panel))
+            return false;
+        auto found = std::find(panel.wideNames.begin(), panel.wideNames.end(), name);
+        if (found == panel.wideNames.end()
+            || !panel.files[found - panel.wideNames.begin()].is_dir)
+        {
+            ok = false;
+            break;
+        }
+        panel.filesystem->cd(panel.files[found - panel.wideNames.begin()]);
+        panel.dirStack.push_back(name);
+    }
+
+    update_current_dir(panel);
+    return refresh_dir(panel) && ok;
 }
 
 // SetDirectoryW for CP/M: Dir is "..", "/", "USER_nn" or "/USER_nn"
@@ -566,60 +683,7 @@ extern "C" intptr_t WINAPI SetDirectoryW(const struct SetDirectoryInfo *Info)
     if (panel.cpmUsers)
         return set_cpm_dir(panel, Info->Dir) ? TRUE : FALSE;
 
-    if (!Info->Dir || wcscmp(Info->Dir, L"/") == 0)
-    {
-        // Navigate to root: cd_up until root, then re-read
-        while (!panel.filesystem->is_root())
-            panel.filesystem->cd_up();
-        panel.currentDir = L"/";
-        return refresh_dir(panel) ? TRUE : FALSE;
-    }
-
-    if (wcscmp(Info->Dir, L"..") == 0)
-    {
-        if (panel.filesystem->is_root())
-            return TRUE;
-        panel.filesystem->cd_up();
-        // Strip last path segment
-        if (!panel.currentDir.empty() && panel.currentDir.back() == L'/')
-            panel.currentDir.pop_back();
-        auto pos = panel.currentDir.find_last_of(L'/');
-        panel.currentDir = (pos == 0) ? L"/" : panel.currentDir.substr(0, pos + 1);
-        return refresh_dir(panel) ? TRUE : FALSE;
-    }
-
-    // Named directory: extract the last path component
-    std::wstring dirPath = Info->Dir;
-    // Remove trailing slash if present
-    if (!dirPath.empty() && dirPath.back() == L'/')
-        dirPath.pop_back();
-    // Get last component
-    auto pos = dirPath.find_last_of(L'/');
-    std::wstring dirName = (pos == std::wstring::npos) ? dirPath : dirPath.substr(pos + 1);
-
-    // Special case: navigating from root to subdir
-    if (dirName.empty())
-    {
-        panel.currentDir = dirPath;
-        return refresh_dir(panel) ? TRUE : FALSE;
-    }
-
-    // Find the directory in the current listing
-    dsk_tools::UniversalFile fd;
-    std::string uName = wide_to_utf8(dirName);
-    auto r = panel.filesystem->find_file(uName, fd);
-    if (!r || !fd.is_dir)
-        return FALSE;
-
-    panel.filesystem->cd(fd);
-
-    // Update currentDir
-    if (panel.currentDir == L"/")
-        panel.currentDir = L"/" + dirName;
-    else
-        panel.currentDir = panel.currentDir + dirName + L"/";
-
-    return refresh_dir(panel) ? TRUE : FALSE;
+    return set_dir(panel, Info->Dir) ? TRUE : FALSE;
 }
 
 static std::wstring join_path(std::wstring dir, const std::wstring &name)
@@ -629,39 +693,182 @@ static std::wstring join_path(std::wstring dir, const std::wstring &name)
     return dir + name;
 }
 
-// Extracts one file from the image to outPath
-static bool extract_file(PluginPanel &panel, const dsk_tools::UniversalFile &uf,
-                         const std::wstring &outPath)
+static std::wstring last_error_text(DWORD code)
 {
+    wchar_t *buf = nullptr;
+    FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                   nullptr, code, 0, reinterpret_cast<wchar_t *>(&buf), 0, nullptr);
+    std::wstring text = buf ? buf : L"";
+    LocalFree(buf);
+    while (!text.empty() && (text.back() == L'\n' || text.back() == L'\r' || text.back() == L' '))
+        text.pop_back();
+    return text;
+}
+
+// Shows a warning with buttons; returns the button index, -1 on Esc
+static intptr_t ask(const std::vector<std::wstring> &lines, const std::vector<const wchar_t *> &buttons)
+{
+    static const UUID PluginUuid = PLUGIN_UUID;
+    std::vector<const wchar_t *> items;
+    items.push_back(L"DskTools");
+    for (const auto &l : lines)
+        items.push_back(l.c_str());
+    items.insert(items.end(), buttons.begin(), buttons.end());
+    return PSI.Message(&PluginUuid, nullptr, FMSG_WARNING, nullptr,
+                       items.data(), items.size(), static_cast<intptr_t>(buttons.size()));
+}
+
+// ── Extraction ─────────────────────────────────────────────────
+
+enum class Outcome { Ok, Skipped, Cancelled };
+
+struct ExtractContext
+{
+    PluginPanel &panel;
+    bool ask;                   // interactive copy: confirm overwrite
+    bool report;                // show errors
+    bool overwriteAll = false;
+    bool skipExisting = false;
+    bool skipErrors   = false;
+};
+
+// Error while extracting `what`: Skip / Skip all / Cancel
+static Outcome extract_error(ExtractContext &ctx, const std::wstring &what, const std::wstring &reason)
+{
+    if (!ctx.report || ctx.skipErrors)
+        return Outcome::Skipped;
+    switch (ask({ L"Cannot extract", what, reason }, { L"&Skip", L"Skip &all", L"&Cancel" }))
+    {
+    case 0:  return Outcome::Skipped;
+    case 1:  ctx.skipErrors = true; return Outcome::Skipped;
+    default: return Outcome::Cancelled;
+    }
+}
+
+// Extracts one file from the image to outPath
+static Outcome extract_file(ExtractContext &ctx, const dsk_tools::UniversalFile &uf,
+                            const std::wstring &outPath)
+{
+    DWORD attrs = GetFileAttributesW(outPath.c_str());
+    if (attrs != INVALID_FILE_ATTRIBUTES && ctx.ask && !ctx.overwriteAll)
+    {
+        if (ctx.skipExisting)
+            return Outcome::Skipped;
+        switch (ask({ L"File already exists", outPath },
+                    { L"&Overwrite", L"&All", L"&Skip", L"S&kip all", L"&Cancel" }))
+        {
+        case 0:  break;
+        case 1:  ctx.overwriteAll = true; break;
+        case 2:  return Outcome::Skipped;
+        case 3:  ctx.skipExisting = true; return Outcome::Skipped;
+        default: return Outcome::Cancelled;
+        }
+    }
+
     dsk_tools::BYTES fileData;
-    if (!panel.filesystem->get_file(uf, "raw", fileData))
-        return false;
+    auto r = ctx.panel.filesystem->get_file(uf, "raw", fileData);
+    if (!r)
+        return extract_error(ctx, outPath, describe(L"Cannot read file from image", r));
+
+    // A read-only target (e.g. extracted before from an R/O file) would fail CREATE_ALWAYS
+    if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY))
+        SetFileAttributesW(outPath.c_str(), attrs & ~FILE_ATTRIBUTE_READONLY);
 
     HANDLE hFile = CreateFileW(outPath.c_str(), GENERIC_WRITE, 0,
                                 nullptr, CREATE_ALWAYS,
                                 FILE_ATTRIBUTE_NORMAL, nullptr);
     if (hFile == INVALID_HANDLE_VALUE)
-        return false;
+        return extract_error(ctx, outPath, last_error_text(GetLastError()));
 
     DWORD written = 0;
     BOOL ok = WriteFile(hFile, fileData.data(),
                         static_cast<DWORD>(fileData.size()), &written, nullptr);
+    DWORD err = GetLastError();
     CloseHandle(hFile);
-    return ok && written == fileData.size();
+    if (!ok || written != fileData.size())
+    {
+        DeleteFileW(outPath.c_str());
+        return extract_error(ctx, outPath, ok ? std::wstring(L"Write incomplete") : last_error_text(err));
+    }
+    return Outcome::Ok;
 }
 
-// CP/M: copies a whole user area (virtual USER_nn directory) into <destDir>/USER_nn
-static bool extract_cpm_area(PluginPanel &panel, unsigned user, const std::wstring &destDir)
+static Outcome make_dir(ExtractContext &ctx, const std::wstring &dirPath)
+{
+    if (CreateDirectoryW(dirPath.c_str(), nullptr))
+        return Outcome::Ok;
+    DWORD err = GetLastError();
+    DWORD attrs = GetFileAttributesW(dirPath.c_str());
+    if (err == ERROR_ALREADY_EXISTS && attrs != INVALID_FILE_ATTRIBUTES
+        && (attrs & FILE_ATTRIBUTE_DIRECTORY))
+        return Outcome::Ok;
+    return extract_error(ctx, dirPath, last_error_text(err));
+}
+
+// Extracts a listing (already named by build_wide_names) into destDir; worst outcome wins
+static Outcome extract_list(ExtractContext &ctx, const dsk_tools::Files &files,
+                            const std::vector<std::wstring> &names, const std::wstring &destDir);
+
+// Recursively extracts a directory of a hierarchical filesystem into destDir\name
+static Outcome extract_dir(ExtractContext &ctx, const dsk_tools::UniversalFile &dir,
+                           const std::wstring &name, const std::wstring &destDir)
+{
+    std::wstring dirPath = join_path(destDir, name);
+    Outcome o = make_dir(ctx, dirPath);
+    if (o != Outcome::Ok)
+        return o;
+
+    auto &fs = *ctx.panel.filesystem;
+    fs.cd(dir);
+    dsk_tools::Files files;
+    auto r = list_dir(fs, files);
+    if (r)
+        o = extract_list(ctx, files, build_wide_names(files), dirPath);
+    else
+        o = extract_error(ctx, dirPath, describe(L"Cannot read directory", r));
+    fs.cd_up();
+    return o;
+}
+
+// CP/M: copies a whole user area (virtual USER_nn directory) into destDir\USER_nn
+static Outcome extract_cpm_area(ExtractContext &ctx, unsigned user, const std::wstring &destDir)
 {
     std::wstring dirPath = join_path(destDir, cpm_user_dir(user));
-    if (!CreateDirectoryW(dirPath.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS)
-        return false;
+    Outcome o = make_dir(ctx, dirPath);
+    if (o != Outcome::Ok)
+        return o;
 
-    bool ok = true;
-    for (const auto &f : panel.cpmAll)
+    dsk_tools::Files area;
+    for (const auto &f : ctx.panel.cpmAll)
         if (!f.is_dir && cpm_user(f) == user)
-            ok = extract_file(panel, f, join_path(dirPath, to_wide(f.name))) && ok;
-    return ok;
+            area.push_back(f);
+    return extract_list(ctx, area, build_wide_names(area), dirPath);
+}
+
+// One panel item: a file, a directory or a CP/M user area
+static Outcome extract_item(ExtractContext &ctx, const dsk_tools::UniversalFile &uf,
+                            const std::wstring &name, const std::wstring &destDir)
+{
+    if (!uf.is_dir)
+        return extract_file(ctx, uf, join_path(destDir, name));
+    if (ctx.panel.cpmUsers)
+        return extract_cpm_area(ctx, cpm_user(uf), destDir);
+    return extract_dir(ctx, uf, name, destDir);
+}
+
+static Outcome extract_list(ExtractContext &ctx, const dsk_tools::Files &files,
+                            const std::vector<std::wstring> &names, const std::wstring &destDir)
+{
+    Outcome result = Outcome::Ok;
+    for (size_t i = 0; i < files.size(); ++i)
+    {
+        Outcome o = extract_item(ctx, files[i], names[i], destDir);
+        if (o == Outcome::Cancelled)
+            return o;
+        if (o == Outcome::Skipped)
+            result = Outcome::Skipped;
+    }
+    return result;
 }
 
 extern "C" intptr_t WINAPI GetFilesW(struct GetFilesInfo *Info)
@@ -670,30 +877,43 @@ extern "C" intptr_t WINAPI GetFilesW(struct GetFilesInfo *Info)
     if (it == g_Panels.end()) return FALSE;
 
     auto &panel = it->second;
-    intptr_t successCount = 0;
+    const bool silent = (Info->OpMode & (OPM_SILENT | OPM_FIND | OPM_QUICKVIEW)) != 0;
 
-    for (size_t i = 0; i < Info->ItemsNumber; ++i)
+    if (Info->Move)
     {
-        intptr_t idx = reinterpret_cast<intptr_t>(Info->PanelItem[i].UserData.Data);
-        if (idx < 0 || static_cast<size_t>(idx) >= panel.files.size())
-            continue;
-
-        const auto &uf = panel.files[idx];
-        bool ok;
-        if (uf.is_dir)
-        {
-            if (!panel.cpmUsers)
-                continue;   // TODO: recursive copy of real directories
-            ok = extract_cpm_area(panel, cpm_user(uf), Info->DestPath);
-        }
-        else
-            ok = extract_file(panel, uf, join_path(Info->DestPath, Info->PanelItem[i].FileName));
-
-        if (ok)
-            ++successCount;
+        // The image is read-only for now: refuse rather than copy and keep the originals
+        if (!silent)
+            show_error(L"Moving files out of a disk image is not supported:\n"
+                       L"the image is read-only. Use F5 to copy.");
+        return FALSE;
     }
 
-    return successCount > 0 ? TRUE : FALSE;
+    // F3/F4/Ctrl+Q extract into a temporary folder: no overwrite questions there
+    ExtractContext ctx{ panel,
+                        (Info->OpMode & (OPM_SILENT | OPM_FIND | OPM_VIEW | OPM_EDIT | OPM_QUICKVIEW)) == 0,
+                        !silent };
+
+    bool anyOk = false;
+    for (size_t i = 0; i < Info->ItemsNumber; ++i)
+    {
+        auto &item = Info->PanelItem[i];
+        intptr_t idx = reinterpret_cast<intptr_t>(item.UserData.Data);
+        if (idx < 0 || static_cast<size_t>(idx) >= panel.files.size())
+        {
+            item.Flags &= ~PPIF_SELECTED;
+            continue;
+        }
+
+        Outcome o = extract_item(ctx, panel.files[idx], panel.wideNames[idx], Info->DestPath);
+        if (o == Outcome::Cancelled)
+            return -1;
+        if (o == Outcome::Ok)
+            anyOk = true;
+        else
+            item.Flags &= ~PPIF_SELECTED;   // FAR keeps items it was not done with selected
+    }
+
+    return anyOk ? TRUE : FALSE;
 }
 
 extern "C" intptr_t WINAPI DeleteFilesW(const struct DeleteFilesInfo * /*Info*/)

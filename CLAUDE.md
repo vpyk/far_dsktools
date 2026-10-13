@@ -40,8 +40,8 @@ FAR3 file system plugin (плагин файловой системы) — a sha
 | `third_party/FarPluginSDK/` | FAR3 SDK C/C++ headers (`Headers.c/plugin.hpp`), build 6666, unmodified |
 | `third_party/dsk_tools/` | dsk_tools static library (GPL-3.0), built as subdirectory |
 | `TODO.md` | Open tasks, incl. the pre-release `MinFarVersion` decision — keep it updated |
-| `test/` | Test images (`cpm_users.kdi`) and their generator (`make_cpm_users.cpp`) |
-| `.gitattributes` | `*.kdi` binary; FAR SDK headers stored byte for byte (`-text`) |
+| `test/` | Test images and their generators: `cpm_users.kdi` (CP/M user areas), `fat_names.img` (nested FAT dirs, Windows-invalid names) |
+| `.gitattributes` | `*.kdi`, `*.img` binary; FAR SDK headers stored byte for byte (`-text`) |
 
 **Current state:** Disk image browser plugin using [dsk_tools](https://github.com/Ptr314/dsk_tools). Opens CP/M, DOS 3.3, Agat, FAT, ProDOS, RT-11 and other retro disk images by Enter/Ctrl+PgDn on the file (`AnalyseW` → `OpenW(OPEN_ANALYSE)`), via `dsk:<path>` in FAR command line, or via F11 menu (opens the file under cursor). Errors are shown with `PSI.Message`; nothing is shown when `AnalyseW` does not recognize a file. Supports directory navigation and file extraction (`GetFilesW`). Write operations (`PutFilesW`, `DeleteFilesW`, `MakeDirectoryW`) return `FALSE`.
 
@@ -72,6 +72,10 @@ Plugin opens disk images via:
 5. `filesystem->get_file(uf, "raw", data)` — extract file as `BYTES` (`std::vector<uint8_t>`)
 
 `PluginPanel` holds `unique_ptr<diskImage>`, `unique_ptr<fileSystem>`, cached `Files` and parallel `vector<wstring> wideNames` for `PluginPanelItem::FileName` pointers. File index for `GetFilesW` is stored in `PluginPanelItem::UserData.Data` via `reinterpret_cast<void*>(static_cast<intptr_t>(i))`.
+
+**Names and navigation** — `build_wide_names()` gives every listing safe, unique names (`sanitize_name()`: Windows-invalid characters → `_`, reserved device names → `CON_`, trailing dots/spaces, case-insensitive clashes → `~2`). The panel shows them and extraction writes them, so FAR and the plugin always agree. Consequently a directory is entered by its `UniversalFile` found through the displayed name (`set_dir()`, `panel.dirStack`), never by `find_file(name)`. `list_dir()` drops the `..` entry that DOS 3.3/FAT/ProDOS/Onix/Sprite OS `dir()` adds (FAR adds its own via `OPIF_ADDDOTS`).
+
+**Extraction** (`GetFilesW`) — `ExtractContext` holds the mode and the "all" answers; `extract_item()` dispatches to a file, a recursive directory (`extract_dir`: `cd` → `list_dir` → recurse → `cd_up`) or a CP/M area. Overwrite/error prompts are skipped in `OPM_SILENT/FIND/VIEW/EDIT/QUICKVIEW`; Cancel returns `-1`; items not extracted get `PPIF_SELECTED` cleared so FAR keeps them selected. `Move` (F6) is refused while the image is read-only.
 
 **CP/M user areas** — dsk_tools lists all areas flat and keeps the ST byte in `UniversalFile::attributes >> 8`. For `FS::CPM` the plugin (`panel.cpmUsers`) keeps the full listing in `cpmAll` and shows user 0 at the root plus a virtual directory `USER_nn` (two digits) for every other used area 1..31; `set_cpm_dir()` handles `SetDirectoryW` for them, `CurDir` is `/USER_nn`. Entries with ST > 31 (CP/M 3 label/date stamps) are hidden. `fsCPM::put_file` writes to user `attributes >> 8` when `uf.fs == FS::CPM` (else user 0), and `dir()` skips CP/M 3 label/date stamp entries (both upstream since `acc251b`). Test image: `test/cpm_users.kdi` (generator `test/make_cpm_users.cpp`).
 

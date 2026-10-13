@@ -2,3 +2,4 @@
 *.kdi binary
 # Third-party headers are kept byte for byte as upstream ships them
 third_party/FarPluginSDK/** -text
+*.img binary
