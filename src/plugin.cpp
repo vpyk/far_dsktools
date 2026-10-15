@@ -802,6 +802,7 @@ struct OpContext
     bool skipExisting = false;
     bool skipErrors   = false;
     bool changed      = false;  // the image was modified and has to be saved
+    bool broken       = false;  // a write failed halfway: the in-memory image is not trusted
 };
 
 // Error on `what`: Skip / Skip all / Cancel
@@ -815,6 +816,26 @@ static Outcome op_error(OpContext &ctx, const std::wstring &what, const std::wst
     case 1:  ctx.skipErrors = true; return Outcome::Skipped;
     default: return Outcome::Cancelled;
     }
+}
+
+// Errors dsk_tools reports before it touches the image; anything else may come after a
+// part of the change is done (a directory entry made, sectors taken)
+static bool fails_before_change(const dsk_tools::Result &r)
+{
+    using dsk_tools::ErrorCode;
+    return r.code == ErrorCode::InvalidName || r.code == ErrorCode::FileAlreadyExists
+        || r.code == ErrorCode::FileAddErrorSpace || r.code == ErrorCode::DirNotEmpty
+        || r.code == ErrorCode::NotImplementedYet;
+}
+
+// A write failed halfway: stop the whole operation, the caller discards the changes
+static Outcome op_broken(OpContext &ctx, const std::wstring &what, const std::wstring &reason)
+{
+    ctx.broken = true;
+    if (ctx.report)
+        show_error(std::wstring(ctx.action) + L"\n" + what + L"\n" + reason
+                   + L"\nThe operation is stopped, the disk image is left unchanged");
+    return Outcome::Cancelled;
 }
 
 // `what` already exists: Overwrite / All / Skip / Skip all / Cancel. Ok means overwrite.
@@ -850,7 +871,7 @@ static Outcome extract_file(OpContext &ctx, const dsk_tools::UniversalFile &uf,
     }
 
     dsk_tools::BYTES fileData;
-    auto r = ctx.panel.filesystem->get_file(uf, "raw", fileData);
+    auto r = ctx.panel.filesystem->get_file(uf, "FILE_BINARY", fileData);
     if (!r)
         return op_error(ctx, outPath, describe(L"Cannot read file from image", r));
 
@@ -998,6 +1019,8 @@ static std::wstring save_image(PluginPanel &panel)
     return L"";
 }
 
+static void discard_changes(PluginPanel &panel, bool report);
+
 // Saves the image after an operation and re-reads the panel listing. If saving fails,
 // the changes are dropped by reloading the image, so the panel never shows what is
 // not on disk.
@@ -1011,7 +1034,13 @@ static bool commit_changes(PluginPanel &panel, bool report)
     }
     if (report)
         show_error(L"Cannot save the disk image, the changes are discarded\n" + error);
+    discard_changes(panel, report);
+    return false;
+}
 
+// Drops the in-memory changes: reloads the image from disk and returns to the same place
+static void discard_changes(PluginPanel &panel, bool report)
+{
     std::vector<std::wstring> path = panel.dirStack;
     unsigned user = panel.cpmUser;
     std::wstring reload = mount_image(panel);
@@ -1019,7 +1048,7 @@ static bool commit_changes(PluginPanel &panel, bool report)
     {
         if (report)
             show_error(L"Cannot reload the disk image\n" + reload);
-        return false;
+        return;
     }
     if (panel.cpmUsers)
     {
@@ -1033,7 +1062,6 @@ static bool commit_changes(PluginPanel &panel, bool report)
             p += d + L"/";
         set_dir(panel, p.c_str());
     }
-    return false;
 }
 
 // Can the operation `cap` be done on this image? Shows why not unless silent.
@@ -1130,7 +1158,8 @@ static Outcome put_file(OpContext &ctx, const std::wstring &srcPath, const std::
         {
             auto r = fs.delete_file(existing);
             if (!r)
-                return op_error(ctx, name, describe(L"Cannot replace the file", r));
+                return fails_before_change(r) ? op_error(ctx, name, describe(L"Cannot replace the file", r))
+                                              : op_broken(ctx, name, describe(L"Cannot replace the file", r));
             ctx.changed = true;
         }
     }
@@ -1152,7 +1181,8 @@ static Outcome put_file(OpContext &ctx, const std::wstring &srcPath, const std::
 
     auto r = fs.put_file(uf, format, data, replace);
     if (!r)
-        return op_error(ctx, name, name_error(panel, r, L"Cannot write the file"));
+        return fails_before_change(r) ? op_error(ctx, name, name_error(panel, r, L"Cannot write the file"))
+                                      : op_broken(ctx, name, name_error(panel, r, L"Cannot write the file"));
     ctx.changed = true;
     return Outcome::Ok;
 }
@@ -1173,7 +1203,8 @@ static Outcome put_dir(OpContext &ctx, const std::wstring &srcPath, const std::w
         dsk_tools::UniversalFile created;
         auto r = fs.mkdir(wide_to_utf8(name), created);
         if (!r)
-            return op_error(ctx, name, name_error(panel, r, L"Cannot create the directory"));
+            return fails_before_change(r) ? op_error(ctx, name, name_error(panel, r, L"Cannot create the directory"))
+                                          : op_broken(ctx, name, name_error(panel, r, L"Cannot create the directory"));
         ctx.changed = true;
         // Enter it through a fresh listing entry, as for any other directory
         if (!find_entry(panel, name, dir))
@@ -1292,7 +1323,8 @@ static Outcome delete_item(OpContext &ctx, const dsk_tools::UniversalFile &uf, c
 
     auto r = fs.delete_file(uf);
     if (!r)
-        return op_error(ctx, name, describe(L"Cannot delete", r));
+        return fails_before_change(r) ? op_error(ctx, name, describe(L"Cannot delete", r))
+                                      : op_broken(ctx, name, describe(L"Cannot delete", r));
     ctx.changed = true;
     return Outcome::Ok;
 }
@@ -1352,6 +1384,11 @@ extern "C" intptr_t WINAPI GetFilesW(struct GetFilesInfo *Info)
         for (const auto &v : victims)
             if (delete_item(ctx, v.first, v.second) == Outcome::Cancelled)
                 break;
+        if (ctx.broken)
+        {
+            discard_changes(panel, !silent);
+            return FALSE;
+        }
         if (ctx.changed && !commit_changes(panel, !silent))
             return FALSE;
     }
@@ -1393,6 +1430,11 @@ extern "C" intptr_t WINAPI DeleteFilesW(const struct DeleteFilesInfo *Info)
         anyOk |= (o == Outcome::Ok);
     }
 
+    if (ctx.broken)
+    {
+        discard_changes(panel, !silent);
+        return FALSE;
+    }
     if (ctx.changed)
     {
         if (!commit_changes(panel, !silent))
@@ -1468,6 +1510,8 @@ extern "C" intptr_t WINAPI MakeDirectoryW(struct MakeDirectoryInfo *Info)
     {
         if (!silent)
             show_error(name + L"\n" + name_error(panel, r, L"Cannot create the directory"));
+        if (!fails_before_change(r))
+            discard_changes(panel, !silent);
         return FALSE;
     }
     if (!commit_changes(panel, !silent))
@@ -1509,6 +1553,11 @@ extern "C" intptr_t WINAPI PutFilesW(const struct PutFilesInfo *Info)
             item.Flags &= ~PPIF_SELECTED;
     }
 
+    if (ctx.broken)
+    {
+        discard_changes(panel, !silent);   // the sources of a move stay where they are
+        return FALSE;
+    }
     if (ctx.changed && !commit_changes(panel, !silent))
         return FALSE;
     if (!ctx.changed && panel.cpmUsers)
