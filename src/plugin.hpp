@@ -18,6 +18,7 @@ struct PluginPanel
     std::string                                   typeId;       // reload the image and to pick a writer
     std::string                                   fsId;
     std::wstring                                  newDirName;   // MakeDirectoryW result (Info->Name)
+    std::wstring                                  destPath;     // GetFilesW: Info->DestPath after the copy dialog
     std::unique_ptr<dsk_tools::diskImage>         image;
     std::unique_ptr<dsk_tools::fileSystem>        filesystem;
     dsk_tools::Files                              files;        // what the panel shows

@@ -1329,6 +1329,115 @@ static Outcome delete_item(OpContext &ctx, const dsk_tools::UniversalFile &uf, c
     return Outcome::Ok;
 }
 
+// ── Copy dialog ────────────────────────────────────────────────
+
+enum class ExistingFiles { Ask, Overwrite, Skip };
+
+// F5/F6 out of the image: FAR shows no dialog of its own there (it calls GetFilesW with
+// the other panel's path), so the plugin does. Returns false on Cancel; dest is the
+// destination as the user left it, existing what to do with files already there
+// (Ask by default every time, as in FAR's own dialogs).
+static bool copy_dialog(const GetFilesInfo *Info, PluginPanel &panel, std::wstring &dest,
+                        ExistingFiles &existing)
+{
+    static const UUID PluginUuid = PLUGIN_UUID;
+    static const UUID DialogUuid = COPY_DIALOG_UUID;
+    const bool move = Info->Move != 0;
+
+    std::wstring prompt;
+    if (Info->ItemsNumber == 1)
+    {
+        intptr_t idx = reinterpret_cast<intptr_t>(Info->PanelItem[0].UserData.Data);
+        std::wstring name = (idx >= 0 && static_cast<size_t>(idx) < panel.wideNames.size())
+                          ? panel.wideNames[idx]
+                          : std::wstring(Info->PanelItem[0].FileName ? Info->PanelItem[0].FileName : L"");
+        if (name.size() > 50)
+            name = name.substr(0, 47) + L"...";
+        prompt = (move ? L"Move \"" : L"Copy \"") + name + L"\" to:";
+    }
+    else
+        prompt = (move ? L"Move " : L"Copy ") + std::to_wstring(Info->ItemsNumber) + L" items to:";
+
+    enum { I_BOX, I_PROMPT, I_DEST, I_SEP1, I_EXISTING, I_ASK, I_OVERWRITE, I_SKIP, I_SEP2, I_OK, I_CANCEL };
+    const intptr_t W = 76, H = 11;
+    FarDialogItem items[] = {
+        { DI_DOUBLEBOX,    3, 1, W - 4, H - 2, {},  nullptr, nullptr, DIF_NONE, move ? L"Move" : L"Copy" },
+        { DI_TEXT,         5, 2, W - 6, 2,     {},  nullptr, nullptr, DIF_NONE, prompt.c_str() },
+        { DI_EDIT,         5, 3, W - 6, 3,     {},  L"Copy",  nullptr, DIF_HISTORY | DIF_EDITPATH | DIF_EDITEXPAND, dest.c_str() },
+        { DI_TEXT,        -1, 4, 0,     4,     {},  nullptr, nullptr, DIF_SEPARATOR, L"" },
+        { DI_TEXT,         5, 5, W - 6, 5,     {},  nullptr, nullptr, DIF_NONE, L"Already existing files:" },
+        { DI_RADIOBUTTON,  5, 6, 0,     6,     { 1 }, nullptr, nullptr, DIF_GROUP, L"&Ask" },
+        { DI_RADIOBUTTON, 20, 6, 0,     6,     { 0 }, nullptr, nullptr, DIF_NONE,  L"&Overwrite" },
+        { DI_RADIOBUTTON, 38, 6, 0,     6,     { 0 }, nullptr, nullptr, DIF_NONE,  L"&Skip" },
+        { DI_TEXT,        -1, 7, 0,     7,     {},  nullptr, nullptr, DIF_SEPARATOR, L"" },
+        { DI_BUTTON,       0, 8, 0,     8,     {},  nullptr, nullptr, DIF_CENTERGROUP | DIF_DEFAULTBUTTON, move ? L"&Move" : L"&Copy" },
+        { DI_BUTTON,       0, 8, 0,     8,     {},  nullptr, nullptr, DIF_CENTERGROUP, L"Cancel" },
+    };
+
+    HANDLE hDlg = PSI.DialogInit(&PluginUuid, &DialogUuid, -1, -1, W, H, nullptr,
+                                 items, ARRAYSIZE(items), 0, FDLG_NONE, nullptr, nullptr);
+    if (hDlg == INVALID_HANDLE_VALUE)
+        return true;    // no dialog: go on with the path FAR gave
+
+    bool ok = PSI.DialogRun(hDlg) == I_OK;
+    if (ok)
+    {
+        dest = reinterpret_cast<const wchar_t *>(PSI.SendDlgMessage(hDlg, DM_GETCONSTTEXTPTR, I_DEST, nullptr));
+        auto checked = [&](int item) { return PSI.SendDlgMessage(hDlg, DM_GETCHECK, item, nullptr) == BSTATE_CHECKED; };
+        existing = checked(I_OVERWRITE) ? ExistingFiles::Overwrite
+                        : checked(I_SKIP)      ? ExistingFiles::Skip
+                        : ExistingFiles::Ask;
+    }
+    PSI.DialogFree(hDlg);
+    return ok;
+}
+
+// The path typed in the copy dialog: unquoted, a relative one taken from `base`
+// (the folder FAR offered), normalized
+static std::wstring resolve_dest(std::wstring path, const std::wstring &base)
+{
+    auto first = path.find_first_not_of(L" \"");
+    auto last  = path.find_last_not_of(L" \"");
+    path = (first == std::wstring::npos) ? L"" : path.substr(first, last - first + 1);
+    if (path.empty())
+        return base;
+
+    bool absolute = (path.size() >= 2 && path[1] == L':') || path.compare(0, 2, L"\\\\") == 0;
+    if (!absolute)
+    {
+        if (path[0] == L'\\' || path[0] == L'/')
+            path = base.substr(0, 2) + path;    // root of the base drive
+        else
+            path = join_path(base, path);
+    }
+
+    size_t len = FSF.ConvertPath(CPM_FULL, path.c_str(), nullptr, 0);
+    if (len)
+    {
+        std::vector<wchar_t> full(len);
+        FSF.ConvertPath(CPM_FULL, path.c_str(), full.data(), len);
+        path = full.data();
+    }
+    return path;
+}
+
+static bool is_host_dir(const std::wstring &path)
+{
+    DWORD attrs = GetFileAttributesW(path.c_str());
+    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+// Creates a folder with all missing parents
+static bool create_host_dirs(const std::wstring &path)
+{
+    if (path.empty() || is_host_dir(path))
+        return true;
+    auto pos = path.find_last_of(L"\\/");
+    if (pos != std::wstring::npos && pos > 2 && !create_host_dirs(path.substr(0, pos)))
+        return false;
+    return CreateDirectoryW(path.c_str(), nullptr) || GetLastError() == ERROR_ALREADY_EXISTS;
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  File operation exports
 // ═══════════════════════════════════════════════════════════════
@@ -1345,10 +1454,47 @@ extern "C" intptr_t WINAPI GetFilesW(struct GetFilesInfo *Info)
     if (Info->Move && !check_writable(panel, !silent, dsk_tools::FSCaps::Delete, L"deleting files"))
         return FALSE;
 
-    // F3/F4/Ctrl+Q extract into a temporary folder: no overwrite questions there
-    OpContext ctx{ panel,
-                   (Info->OpMode & (OPM_SILENT | OPM_FIND | OPM_VIEW | OPM_EDIT | OPM_QUICKVIEW)) == 0,
-                   !silent, L"Cannot extract" };
+    // F3/F4/Ctrl+Q extract into a temporary folder: no dialog and no overwrite questions there
+    const bool interactive =
+        (Info->OpMode & (OPM_SILENT | OPM_FIND | OPM_VIEW | OPM_EDIT | OPM_QUICKVIEW | OPM_DESCR)) == 0;
+    OpContext ctx{ panel, interactive, !silent, L"Cannot extract" };
+
+    std::wstring destDir = Info->DestPath ? Info->DestPath : L"";
+    std::wstring renameTo;      // one file copied under a name typed in the dialog
+    if (interactive)
+    {
+        std::wstring typed = destDir;
+        ExistingFiles existing = ExistingFiles::Ask;
+        if (!copy_dialog(Info, panel, typed, existing))
+            return -1;
+        std::wstring dest = resolve_dest(typed, destDir);
+
+        // As in FAR: a single file goes to a path that is not a folder under that name
+        bool toFolder = Info->ItemsNumber != 1 || is_host_dir(dest) || typed.empty()
+                     || typed.back() == L'\\' || typed.back() == L'/';
+        if (!toFolder)
+        {
+            intptr_t idx = reinterpret_cast<intptr_t>(Info->PanelItem[0].UserData.Data);
+            toFolder = idx < 0 || static_cast<size_t>(idx) >= panel.files.size() || panel.files[idx].is_dir;
+        }
+        if (toFolder)
+            destDir = dest;
+        else
+        {
+            auto pos = dest.find_last_of(L"\\/");
+            destDir  = dest.substr(0, pos);
+            renameTo = dest.substr(pos + 1);
+        }
+        if (!create_host_dirs(destDir))
+        {
+            show_error(L"Cannot create the folder\n" + destDir + L"\n" + last_error_text(GetLastError()));
+            return FALSE;
+        }
+        panel.destPath  = destDir;
+        Info->DestPath  = panel.destPath.c_str();   // FAR updates descriptions there
+        ctx.overwriteAll = existing == ExistingFiles::Overwrite;
+        ctx.skipExisting = existing == ExistingFiles::Skip;
+    }
 
     std::vector<size_t> extracted;
     bool cancelled = false;
@@ -1357,18 +1503,18 @@ extern "C" intptr_t WINAPI GetFilesW(struct GetFilesInfo *Info)
         auto &item = Info->PanelItem[i];
         intptr_t idx = reinterpret_cast<intptr_t>(item.UserData.Data);
         if (idx < 0 || static_cast<size_t>(idx) >= panel.files.size())
-        {
-            item.Flags &= ~PPIF_SELECTED;
             continue;
-        }
 
-        Outcome o = extract_item(ctx, panel.files[idx], panel.wideNames[idx], Info->DestPath);
+        Outcome o = extract_item(ctx, panel.files[idx],
+                                 renameTo.empty() ? panel.wideNames[idx] : renameTo, destDir);
         if (o == Outcome::Cancelled)
             cancelled = true;
         else if (o == Outcome::Ok)
+        {
             extracted.push_back(i);
-        else
-            item.Flags &= ~PPIF_SELECTED;   // FAR keeps items it was not done with selected
+            // Unless all went well, FAR deselects only the items with this flag cleared
+            item.Flags &= ~PPIF_SELECTED;
+        }
     }
 
     if (Info->Move && !extracted.empty())
@@ -1395,7 +1541,8 @@ extern "C" intptr_t WINAPI GetFilesW(struct GetFilesInfo *Info)
 
     if (cancelled)
         return -1;
-    return extracted.empty() ? FALSE : TRUE;
+    // TRUE makes FAR deselect everything: only when every item is done
+    return extracted.size() == Info->ItemsNumber ? TRUE : FALSE;
 }
 
 extern "C" intptr_t WINAPI DeleteFilesW(const struct DeleteFilesInfo *Info)
@@ -1548,9 +1695,10 @@ extern "C" intptr_t WINAPI PutFilesW(const struct PutFilesInfo *Info)
         if (o == Outcome::Cancelled)
             cancelled = true;
         else if (o == Outcome::Ok)
+        {
             done.push_back(i);
-        else
-            item.Flags &= ~PPIF_SELECTED;
+            item.Flags &= ~PPIF_SELECTED;   // see GetFilesW
+        }
     }
 
     if (ctx.broken)
@@ -1574,7 +1722,7 @@ extern "C" intptr_t WINAPI PutFilesW(const struct PutFilesInfo *Info)
 
     if (cancelled)
         return -1;
-    return done.empty() ? FALSE : TRUE;
+    return done.size() == Info->ItemsNumber ? TRUE : FALSE;
 }
 
 extern "C" intptr_t WINAPI ProcessHostFileW(const struct ProcessHostFileInfo * /*Info*/)
