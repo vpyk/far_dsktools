@@ -1545,6 +1545,67 @@ extern "C" intptr_t WINAPI GetFilesW(struct GetFilesInfo *Info)
     return extracted.size() == Info->ItemsNumber ? TRUE : FALSE;
 }
 
+// ── Delete confirmations ───────────────────────────────────────
+// FAR asks nothing before DeleteFiles on a plugin panel (FileList::PluginDelete),
+// so the plugin asks itself, following FAR's own Confirmations settings.
+
+// A switch of Options > Confirmations ("Delete", "DeleteFolder"); true if unreadable
+static bool far_confirmation(const wchar_t *name)
+{
+    FarSettingsCreate create = { sizeof(FarSettingsCreate), FarGuid, INVALID_HANDLE_VALUE };
+    if (!PSI.SettingsControl(INVALID_HANDLE_VALUE, SCTL_CREATE, PSL_ROAMING, &create))
+        return true;
+    FarSettingsItem item = {};
+    item.StructSize = sizeof(FarSettingsItem);
+    item.Root       = FSSF_CONFIRMATIONS;
+    item.Name       = name;
+    item.Type       = FST_UNKNOWN;
+    bool result = true;
+    if (PSI.SettingsControl(create.Handle, SCTL_GET, 0, &item) && item.Type == FST_QWORD)
+        result = item.Number != 0;
+    PSI.SettingsControl(create.Handle, SCTL_FREE, 0, nullptr);
+    return result;
+}
+
+using Victims = std::vector<std::pair<dsk_tools::UniversalFile, std::wstring>>;
+
+// "Do you wish to delete ...": Delete / Cancel
+static bool confirm_delete(PluginPanel &panel, const Victims &victims)
+{
+    std::vector<std::wstring> lines;
+    if (victims.size() == 1)
+    {
+        const auto &v = victims.front();
+        lines.push_back(!v.first.is_dir ? L"Do you wish to delete the file"
+                        : panel.cpmUsers ? L"Do you wish to delete the user area"
+                        : L"Do you wish to delete the folder");
+        lines.push_back(v.second);
+    }
+    else
+    {
+        lines.push_back(L"Do you wish to delete");
+        lines.push_back(std::to_wstring(victims.size()) + L" items");
+    }
+    return ask(lines, { L"&Delete", L"&Cancel" }) == 0;
+}
+
+// Does a selected folder (or CP/M user area) have anything in it?
+static bool dir_has_entries(PluginPanel &panel, const dsk_tools::UniversalFile &dir)
+{
+    if (panel.cpmUsers)
+    {
+        for (const auto &f : panel.cpmAll)
+            if (!f.is_dir && cpm_user(f) == cpm_user(dir))
+                return true;
+        return false;
+    }
+    panel.filesystem->cd(dir);
+    dsk_tools::Files files;
+    bool any = list_dir(*panel.filesystem, files) && !files.empty();
+    panel.filesystem->cd_up();
+    return any;
+}
+
 extern "C" intptr_t WINAPI DeleteFilesW(const struct DeleteFilesInfo *Info)
 {
     auto it = g_Panels.find(reinterpret_cast<intptr_t>(Info->hPanel));
@@ -1556,7 +1617,7 @@ extern "C" intptr_t WINAPI DeleteFilesW(const struct DeleteFilesInfo *Info)
         return FALSE;
 
     // Copies: the listing is re-read only after the whole operation
-    std::vector<std::pair<dsk_tools::UniversalFile, std::wstring>> victims;
+    Victims victims;
     for (size_t i = 0; i < Info->ItemsNumber; ++i)
     {
         intptr_t idx = reinterpret_cast<intptr_t>(Info->PanelItem[i].UserData.Data);
@@ -1564,10 +1625,35 @@ extern "C" intptr_t WINAPI DeleteFilesW(const struct DeleteFilesInfo *Info)
             victims.emplace_back(panel.files[idx], panel.wideNames[idx]);
     }
 
+    if (victims.empty())
+        return FALSE;
+    if (!silent && far_confirmation(L"Delete") && !confirm_delete(panel, victims))
+        return FALSE;
+
+    const bool confirmFolders = !silent && far_confirmation(L"DeleteFolder");
+    bool deleteAllFolders = false;
+
     OpContext ctx{ panel, false, !silent, L"Cannot delete" };
     bool cancelled = false, anyOk = false;
     for (const auto &v : victims)
     {
+        // As FAR does: once more for every selected folder that is not empty
+        if (v.first.is_dir && confirmFolders && !deleteAllFolders && dir_has_entries(panel, v.first))
+        {
+            intptr_t answer = ask({ panel.cpmUsers ? L"The following user area will be deleted with its files:"
+                                                   : L"The following folder will be deleted:", v.second },
+                                  { L"&Delete", L"&All", L"&Skip", L"&Cancel" });
+            if (answer == 1)
+                deleteAllFolders = true;
+            else if (answer == 2)
+                continue;
+            else if (answer != 0)
+            {
+                cancelled = true;
+                break;
+            }
+        }
+
         Outcome o = delete_item(ctx, v.first, v.second);
         if (o == Outcome::Cancelled)
         {
