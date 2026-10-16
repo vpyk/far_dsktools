@@ -62,7 +62,7 @@ FAR3 file system plugin (плагин файловой системы) — a sha
 - **No `OPIF_REALNAMES`** — files live inside the image, so FAR must fetch them via `GetFilesW` (F3/F4/F5 extract into `DestPath`). With the flag FAR accesses non-existent host paths. `GetFilesW` returns `TRUE`/`FALSE`, not a count.
 - **Root `CurDir` must be empty** in `GetOpenPanelInfoW`, otherwise `..` at the image root does not return to the host panel. Internally `currentDir` stays `"/"`.
 - **Handle arithmetic**: use `intptr_t` for the handle counter, cast to/from `HANDLE` with `reinterpret_cast`. Direct `HANDLE` arithmetic is illegal in C++.
-- **UUID format**: `PLUGIN_UUID` must be a braced `GUID` struct initializer, not a string like `L"{...}"`.
+- **UUID format**: `PLUGIN_UUID` must be a braced `GUID` struct initializer, not a string like `L"{...}"`. The plugin GUID is `{A800155E-D7FA-4A2F-B529-75F2F0AE2CEF}` — never change it: FAR keys settings, menu items and macros to it.
 
 ## dsk_tools integration
 

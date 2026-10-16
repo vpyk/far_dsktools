@@ -1,9 +1,8 @@
 #pragma once
 
-// Plugin GUID — generate your own (far3: "plugin:uuid:gen" / uuidgen)
-// Format: {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}
-// {A1B2C3D4-E5F6-7890-AB-CD-EF1234567890}
-#define PLUGIN_UUID { 0xA1B2C3D4, 0xE5F6, 0x7890, { 0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56, 0x78, 0x90 } }
+// Plugin GUID: {A800155E-D7FA-4A2F-B529-75F2F0AE2CEF}
+// FAR keys the plugin's settings, menu items and macros to it, so it must not change
+#define PLUGIN_UUID { 0xa800155e, 0xd7fa, 0x4a2f, { 0xb5, 0x29, 0x75, 0xf2, 0xf0, 0xae, 0x2c, 0xef } }
 
 // F5/F6 out of an image (copy_dialog)
 #define COPY_DIALOG_UUID { 0x0f5488cc, 0x3a10, 0x4c11, { 0x9c, 0xd7, 0xc9, 0xe4, 0x6d, 0x45, 0xd8, 0xb0 } }
