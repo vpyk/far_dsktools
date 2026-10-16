@@ -17,7 +17,7 @@ free_sectors() reported enough space:
 Now it searches from start_track to the last logical track, then from
 start_track - 1 down to 0, over get_tracks() * get_heads() tracks.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Assisted-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---
  src/filesystems/fs_dos33.cpp | 46 +++++++++++++++---------------------
  1 file changed, 19 insertions(+), 27 deletions(-)
