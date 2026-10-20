@@ -220,6 +220,25 @@ static bool has_time(const FILETIME &ft)
     return ft.dwLowDateTime || ft.dwHighDateTime;
 }
 
+// The other way: the last write time of a host file or folder as local time, for
+// put_file/mkdir (FAT and RT-11 keep it, others ignore it); no date if unreadable
+static dsk_tools::FileDate host_date(const std::wstring &path)
+{
+    dsk_tools::FileDate d;
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    SYSTEMTIME utc, local;
+    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &fad)
+        || !FileTimeToSystemTime(&fad.ftLastWriteTime, &utc)
+        || !SystemTimeToTzSpecificLocalTime(nullptr, &utc, &local))
+        return d;
+    d.year   = local.wYear;
+    d.month  = static_cast<uint8_t>(local.wMonth);
+    d.day    = static_cast<uint8_t>(local.wDay);
+    d.hour   = static_cast<int8_t>(local.wHour);
+    d.minute = static_cast<int8_t>(local.wMinute);
+    return d;
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  Refresh directory listing after navigation
 // ═══════════════════════════════════════════════════════════════
@@ -1249,6 +1268,7 @@ static Outcome put_file(OpContext &ctx, const std::wstring &srcPath, const std::
     dsk_tools::UniversalFile uf{};
     uf.fs   = dsk_tools::FS::None;
     uf.name = wide_to_utf8(name);
+    uf.date = host_date(srcPath);
     if (panel.cpmUsers)
     {
         // fsCPM::put_file takes the user area from a CP/M source
@@ -1282,8 +1302,11 @@ static Outcome put_dir(OpContext &ctx, const std::wstring &srcPath, const std::w
     dsk_tools::UniversalFile dir;
     if (!find_entry(panel, name, dir))
     {
-        dsk_tools::UniversalFile created;
-        auto r = fs.mkdir(wide_to_utf8(name), created);
+        dsk_tools::UniversalFile src{}, created;
+        src.fs   = dsk_tools::FS::None;
+        src.name = wide_to_utf8(name);
+        src.date = host_date(srcPath);
+        auto r = fs.mkdir(src, created);
         if (!r)
             return fails_before_change(r) ? op_error(ctx, name, name_error(panel, r, msg(MCannotCreateDir)))
                                           : op_broken(ctx, name, name_error(panel, r, msg(MCannotCreateDir)));

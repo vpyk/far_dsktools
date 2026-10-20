@@ -1,0 +1,151 @@
+From 02f61c76ee5dcfd7c39acbc92ed90a870656a766 Mon Sep 17 00:00:00 2001
+From: Viktor Pykhonin <pyk@mail.ru>
+Date: Wed, 21 Oct 2026 00:41:14 +0300
+Subject: [PATCH] FAT, RT-11: put_file and mkdir keep the date of the source
+ file
+
+put_file and mkdir stamped a new entry with the current time unless the
+source came from the same filesystem (uf.fs + metadata). The date that
+dir() of other filesystems fills in, UniversalFile::date, was lost: a
+file copied from a ProDOS or Sprite OS disk, or from the host by a caller
+that sets it, got today's date.
+
+Now the date of the source is used when it is set and the filesystem can
+hold it: FAT 1980..2107 (no time gives midnight), RT-11 1972..2099.
+Otherwise it is the current time as before, so callers that leave the
+date empty (year 0, the default) are not affected. Copies within the same
+filesystem still take the time stamps from the metadata.
+
+fsRT11::encode_date() is the date word encoder today() now uses as well.
+
+Assisted-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/definitions.h           |  3 ++-
+ src/filesystems/fs_fat.cpp  | 17 +++++++++++++++--
+ src/filesystems/fs_fat.h    |  1 +
+ src/filesystems/fs_rt11.cpp | 20 +++++++++++++++-----
+ src/filesystems/fs_rt11.h   |  1 +
+ 5 files changed, 34 insertions(+), 8 deletions(-)
+
+diff --git a/src/definitions.h b/src/definitions.h
+index bee30b6..644364f 100644
+--- a/src/definitions.h
++++ b/src/definitions.h
+@@ -75,7 +75,8 @@ namespace dsk_tools {
+         bool                    is_protected;
+         bool                    is_deleted;
+         PreferredType           type_preferred;
+-        FileDate                date;           // Filled when the filesystem reports FSCaps::Date
++        FileDate                date;           // Filled when the filesystem reports FSCaps::Date;
++                                                // put_file/mkdir of FAT and RT-11 keep it if set
+ 
+         // FS-specific data
+         std::vector<uint8_t>    original_name;
+diff --git a/src/filesystems/fs_fat.cpp b/src/filesystems/fs_fat.cpp
+index b62835b..93a08f3 100644
+--- a/src/filesystems/fs_fat.cpp
++++ b/src/filesystems/fs_fat.cpp
+@@ -1039,6 +1039,19 @@ namespace dsk_tools {
+         time = static_cast<uint16_t>((lt->tm_hour << 11) | (lt->tm_min << 5) | (lt->tm_sec / 2));
+     }
+ 
++    // The time stamp of a new entry: the source file's date when it has one FAT can hold
++    // (1980..2107; no time gives midnight), otherwise now
++    void fsFAT::fat_stamp(const FileDate & d, uint16_t & date, uint16_t & time)
++    {
++        if (!d.valid() || d.year < 1980 || d.year > 2107) {
++            fat_now(date, time);
++            return;
++        }
++        date = static_cast<uint16_t>(((d.year - 1980) << 9) | (d.month << 5) | d.day);
++        const bool has_time = d.hour >= 0 && d.hour <= 23 && d.minute >= 0 && d.minute <= 59;
++        time = has_time ? static_cast<uint16_t>((d.hour << 11) | (d.minute << 5)) : 0;
++    }
++
+     Result fsFAT::put_file(const UniversalFile & uf, const std::string & format, const BYTES & data, bool force_replace)
+     {
+         if (!is_open) return Result::error(ErrorCode::OpenNotLoaded);
+@@ -1114,7 +1127,7 @@ namespace dsk_tools {
+         } else {
+             e.attr = existing ? static_cast<uint8_t>(old.attr | FAT_ATTR_ARCHIVE)
+                               : static_cast<uint8_t>(FAT_ATTR_ARCHIVE | (uf.is_protected ? FAT_ATTR_READ_ONLY : 0));
+-            fat_now(e.writeDate, e.writeTime);
++            fat_stamp(uf.date, e.writeDate, e.writeTime);
+             if (existing) {
+                 e.createTimeTenth = old.createTimeTenth;
+                 e.createTime      = old.createTime;
+@@ -1272,7 +1285,7 @@ namespace dsk_tools {
+             e.writeTime  = src->writeTime;
+             e.writeDate  = src->writeDate;
+         } else {
+-            fat_now(e.writeDate, e.writeTime);
++            fat_stamp(uf.date, e.writeDate, e.writeTime);
+             e.createTime = e.writeTime;
+             e.createDate = e.writeDate;
+         }
+diff --git a/src/filesystems/fs_fat.h b/src/filesystems/fs_fat.h
+index 04ca10c..6b2e04b 100644
+--- a/src/filesystems/fs_fat.h
++++ b/src/filesystems/fs_fat.h
+@@ -105,6 +105,7 @@ namespace dsk_tools {
+         static Result make_short_name(const UniversalFile & uf, uint8_t out[11]);
+         static Result make_short_name(const std::string & name, uint8_t out[11]);
+         static void fat_now(uint16_t & date, uint16_t & time);
++        static void fat_stamp(const FileDate & d, uint16_t & date, uint16_t & time);
+ 
+     public:
+         explicit fsFAT(diskImage * image);
+diff --git a/src/filesystems/fs_rt11.cpp b/src/filesystems/fs_rt11.cpp
+index 59f2f7f..909bd1d 100644
+--- a/src/filesystems/fs_rt11.cpp
++++ b/src/filesystems/fs_rt11.cpp
+@@ -271,11 +271,19 @@ namespace dsk_tools {
+         const std::time_t t = std::time(nullptr);
+         const std::tm * lt = std::localtime(&t);
+         if (!lt) return 0;
+-        const unsigned year = static_cast<unsigned>(lt->tm_year) + 1900;
+-        if (year < 1972 || year > 2099) return 0;
++        FileDate d;
++        d.year  = static_cast<uint16_t>(lt->tm_year + 1900);
++        d.month = static_cast<uint8_t>(lt->tm_mon + 1);
++        d.day   = static_cast<uint8_t>(lt->tm_mday);
++        return encode_date(d);
++    }
+ 
+-        const unsigned offset = year - 1972;
+-        return static_cast<uint16_t>(((lt->tm_mon + 1) << 10) | (lt->tm_mday << 5) | (offset & 037) | ((offset >> 5) << 14));
++    // The RT-11 date word, 0 (no date) when there is no date or RT-11 cannot hold it (1972..2099)
++    uint16_t fsRT11::encode_date(const FileDate & d)
++    {
++        if (!d.valid() || d.year < 1972 || d.year > 2099) return 0;
++        const unsigned offset = d.year - 1972u;
++        return static_cast<uint16_t>((d.month << 10) | (d.day << 5) | (offset & 037) | ((offset >> 5) << 14));
+     }
+ 
+     std::string fsRT11::home_text(const BYTES & home, unsigned offset)
+@@ -841,7 +849,9 @@ namespace dsk_tools {
+         entry.status = RT11_E_PERM;
+         std::memcpy(entry.name, name, sizeof(entry.name));
+         entry.length = needed;
+-        entry.date = today();
++        // The source file's date when it has one, otherwise today
++        entry.date = encode_date(uf.date);
++        if (entry.date == 0) entry.date = today();
+ 
+         RT11_Entry src;
+         if (uf.fs == FS::RT11 && entry_from_bytes(uf.metadata, src)) {
+diff --git a/src/filesystems/fs_rt11.h b/src/filesystems/fs_rt11.h
+index 58374cc..4a6ba7d 100644
+--- a/src/filesystems/fs_rt11.h
++++ b/src/filesystems/fs_rt11.h
+@@ -97,6 +97,7 @@ namespace dsk_tools {
+         static std::string date_to_string(uint16_t date);
+         static bool string_to_date(const std::string & s, uint16_t & date);
+         static uint16_t today();
++        static uint16_t encode_date(const FileDate & d);
+         static std::string home_text(const BYTES & home, unsigned offset);
+ 
+     public:
+-- 
+2.56.0.windows.2
+
