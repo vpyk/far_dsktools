@@ -117,19 +117,19 @@
 //[MMoveTo]
 "Переместить %1 в:"
 //[MExistingFiles]
-"Уже существующие файлы:"
+"Уже су&ществующие файлы:"
 //[MExistingAsk]
-"&Спрашивать"
+"Спрашивать"
 //[MExistingOverwrite]
-"Пере&записывать"
+"Перезаписывать"
 //[MExistingSkip]
-"П&ропускать"
+"Пропускать"
 //[MCopyButton]
 "&Копировать"
 //[MMoveButton]
 "&Переместить"
 //[MDialogCancel]
-"Отмена"
+"&Отмена"
 //[MMakeDirTitle]
 "Создание каталога"
 //[MMakeDirName]

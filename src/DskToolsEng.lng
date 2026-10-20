@@ -117,19 +117,19 @@
 //[MMoveTo]
 "Move %1 to:"
 //[MExistingFiles]
-"Already existing files:"
+"Already e&xisting files:"
 //[MExistingAsk]
-"&Ask"
+"Ask"
 //[MExistingOverwrite]
-"&Overwrite"
+"Overwrite"
 //[MExistingSkip]
-"&Skip"
+"Skip"
 //[MCopyButton]
 "&Copy"
 //[MMoveButton]
 "&Move"
 //[MDialogCancel]
-"Cancel"
+"Ca&ncel"
 //[MMakeDirTitle]
 "Make directory"
 //[MMakeDirName]

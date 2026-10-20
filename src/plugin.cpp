@@ -4,6 +4,8 @@
 #include "version.hpp"
 #include "diskdefs_embed.h"
 
+#include <DlgBuilder.hpp>
+
 #include <algorithm>
 #include <cstring>
 #include <map>
@@ -1392,59 +1394,21 @@ static bool copy_dialog(const GetFilesInfo *Info, PluginPanel &panel, std::wstri
     else
         prompt = msg(move ? MMoveTo : MCopyTo, { items_text(Info->ItemsNumber) });
 
-    // Radio buttons in a row, each "( ) text" as wide as its translation
-    const wchar_t *radio[] = { msg(MExistingAsk), msg(MExistingOverwrite), msg(MExistingSkip) };
-    auto shown = [](const wchar_t *text)    // without the hotkey '&'
-    {
-        intptr_t len = 0;
-        for (const wchar_t *c = text; *c; ++c)
-        {
-            if (*c == L'&')
-            {
-                if (c[1] != L'&')
-                    continue;   // hotkey marker
-                ++c;            // "&&" shows one '&'
-            }
-            ++len;
-        }
-        return len;
-    };
-    intptr_t radioX[3] = { 5 };
-    for (int i = 1; i < 3; ++i)
-        radioX[i] = radioX[i - 1] + 4 + shown(radio[i - 1]) + 3;
+    // Laid out like FAR's own copy dialog; the builder sizes it by the translated texts
+    PluginDialogBuilder builder(PSI, PluginUuid, DialogUuid, move ? MMoveTitle : MCopyTitle, nullptr);
+    builder.AddText(prompt.c_str());
+    builder.AddEditField(dest, 66, L"Copy")->Flags |= DIF_EDITPATH | DIF_EDITEXPAND;
+    builder.AddSeparator();
+    static const int existingIds[] = { MExistingAsk, MExistingOverwrite, MExistingSkip };
+    int choice = static_cast<int>(ExistingFiles::Ask);
+    auto *combo = builder.AddComboBox(&choice, nullptr, 20, existingIds, ARRAYSIZE(existingIds), DIF_DROPDOWNLIST);
+    builder.AddTextBefore(combo, MExistingFiles);
+    builder.AddOKCancel(move ? MMoveButton : MCopyButton, MDialogCancel);
 
-    enum { I_BOX, I_PROMPT, I_DEST, I_SEP1, I_EXISTING, I_ASK, I_OVERWRITE, I_SKIP, I_SEP2, I_OK, I_CANCEL };
-    const intptr_t W = 76, H = 11;
-    FarDialogItem items[] = {
-        { DI_DOUBLEBOX,    3, 1, W - 4, H - 2, {},  nullptr, nullptr, DIF_NONE, msg(move ? MMoveTitle : MCopyTitle) },
-        { DI_TEXT,         5, 2, W - 6, 2,     {},  nullptr, nullptr, DIF_NONE, prompt.c_str() },
-        { DI_EDIT,         5, 3, W - 6, 3,     {},  L"Copy",  nullptr, DIF_HISTORY | DIF_EDITPATH | DIF_EDITEXPAND, dest.c_str() },
-        { DI_TEXT,        -1, 4, 0,     4,     {},  nullptr, nullptr, DIF_SEPARATOR, L"" },
-        { DI_TEXT,         5, 5, W - 6, 5,     {},  nullptr, nullptr, DIF_NONE, msg(MExistingFiles) },
-        { DI_RADIOBUTTON, radioX[0], 6, 0, 6,  { 1 }, nullptr, nullptr, DIF_GROUP, radio[0] },
-        { DI_RADIOBUTTON, radioX[1], 6, 0, 6,  { 0 }, nullptr, nullptr, DIF_NONE,  radio[1] },
-        { DI_RADIOBUTTON, radioX[2], 6, 0, 6,  { 0 }, nullptr, nullptr, DIF_NONE,  radio[2] },
-        { DI_TEXT,        -1, 7, 0,     7,     {},  nullptr, nullptr, DIF_SEPARATOR, L"" },
-        { DI_BUTTON,       0, 8, 0,     8,     {},  nullptr, nullptr, DIF_CENTERGROUP | DIF_DEFAULTBUTTON, msg(move ? MMoveButton : MCopyButton) },
-        { DI_BUTTON,       0, 8, 0,     8,     {},  nullptr, nullptr, DIF_CENTERGROUP, msg(MDialogCancel) },
-    };
-
-    HANDLE hDlg = PSI.DialogInit(&PluginUuid, &DialogUuid, -1, -1, W, H, nullptr,
-                                 items, ARRAYSIZE(items), 0, FDLG_NONE, nullptr, nullptr);
-    if (hDlg == INVALID_HANDLE_VALUE)
-        return true;    // no dialog: go on with the path FAR gave
-
-    bool ok = PSI.DialogRun(hDlg) == I_OK;
-    if (ok)
-    {
-        dest = reinterpret_cast<const wchar_t *>(PSI.SendDlgMessage(hDlg, DM_GETCONSTTEXTPTR, I_DEST, nullptr));
-        auto checked = [&](int item) { return PSI.SendDlgMessage(hDlg, DM_GETCHECK, item, nullptr) == BSTATE_CHECKED; };
-        existing = checked(I_OVERWRITE) ? ExistingFiles::Overwrite
-                        : checked(I_SKIP)      ? ExistingFiles::Skip
-                        : ExistingFiles::Ask;
-    }
-    PSI.DialogFree(hDlg);
-    return ok;
+    if (!builder.ShowDialog())
+        return false;
+    existing = static_cast<ExistingFiles>(choice);
+    return true;
 }
 
 // The path typed in the copy dialog: unquoted, a relative one taken from `base`
