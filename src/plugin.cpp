@@ -1,4 +1,5 @@
 #include "plugin.hpp"
+#include "lang.hpp"
 #include "uuid.hpp"
 #include "version.hpp"
 #include "diskdefs_embed.h"
@@ -116,6 +117,39 @@ static std::wstring extract_filename(const std::wstring &path)
 {
     auto pos = path.find_last_of(L"\\/");
     return (pos == std::wstring::npos) ? path : path.substr(pos + 1);
+}
+
+// ── Messages ───────────────────────────────────────────────────
+// Texts come from DskToolsEng.lng / DskToolsRus.lng next to the DLL, by FAR's interface language
+
+static const wchar_t *msg(LngId id)
+{
+    static const UUID PluginUuid = PLUGIN_UUID;
+    return PSI.GetMsg(&PluginUuid, id);
+}
+
+// A message with %1, %2... replaced by args
+static std::wstring msg(LngId id, std::initializer_list<std::wstring> args)
+{
+    std::wstring r;
+    for (const wchar_t *c = msg(id); *c; ++c)
+    {
+        if (c[0] == L'%' && c[1] >= L'1' && c[1] <= L'9' && static_cast<size_t>(c[1] - L'1') < args.size())
+            r += args.begin()[*++c - L'1'];
+        else
+            r += *c;
+    }
+    return r;
+}
+
+// "N items" in the right Russian plural form (1/21, 2..4/22..24, 5..20); n >= 2 here,
+// a single item is always named
+static std::wstring items_text(size_t n)
+{
+    LngId id = (n % 10 == 1 && n % 100 != 11) ? MItemsOne
+             : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)) ? MItemsFew
+             : MItemsMany;
+    return msg(id, { std::to_wstring(n) });
 }
 
 // PSI.Message shows each item as one line and does not break on '\n',
@@ -367,7 +401,7 @@ static bool detect_image(const std::wstring &path, DetectedImage &out, std::wstr
     auto r = dsk_tools::detect_fdd_type(wide_to_utf8(path), out.formatId, out.typeId, out.fsId, false);
     if (!r)
     {
-        if (error) *error = describe(L"Format detection failed", r);
+        if (error) *error = describe(msg(MFormatDetectionFailed), r);
         return false;
     }
     return true;
@@ -405,19 +439,19 @@ static std::wstring mount_image(PluginPanel &panel)
 
     auto img = dsk_tools::prepare_image(uPath, panel.formatId, panel.typeId, diskdefs());
     if (!img)
-        return L"Unsupported image type: " + to_wide(panel.typeId);
+        return msg(MUnsupportedImageType, { to_wide(panel.typeId) });
 
     auto r = img->load();
     if (!r)
-        return describe(L"Cannot load image", r);
+        return describe(msg(MCannotLoadImage), r);
 
     auto fs = dsk_tools::prepare_filesystem(img.get(), panel.fsId, diskdefs());
     if (!fs)
-        return L"Unsupported filesystem: " + to_wide(panel.fsId);
+        return msg(MUnsupportedFilesystem, { to_wide(panel.fsId) });
 
     r = fs->open();
     if (!r)
-        return describe(L"Cannot open filesystem", r);
+        return describe(msg(MCannotOpenFilesystem), r);
 
     // The filesystem points into the image: drop the old one first
     panel.filesystem.reset();
@@ -434,18 +468,18 @@ static std::wstring read_only_reason(PluginPanel &panel)
 {
     using dsk_tools::FSCaps;
     if (!static_cast<bool>(panel.filesystem->get_caps() & FSCaps::Add))
-        return fs_name(panel.filesystem->get_fs()) + L" is read-only in dsk_tools";
+        return msg(MFsReadOnly, { fs_name(panel.filesystem->get_fs()) });
     if (panel.formatId != "FILE_RAW_MSB")
-        return L"Saving " + to_wide(panel.formatId) + L" images is not supported yet";
+        return msg(MFormatNotSaved, { to_wide(panel.formatId) });
 
     WIN32_FILE_ATTRIBUTE_DATA fad;
     if (!GetFileAttributesExW(panel.hostPath.c_str(), GetFileExInfoStandard, &fad))
-        return L"Cannot read the image file attributes";
+        return msg(MCannotReadAttributes);
     if (fad.dwFileAttributes & FILE_ATTRIBUTE_READONLY)
-        return L"The image file is read-only";
+        return msg(MImageReadOnly);
     unsigned long long size = (static_cast<unsigned long long>(fad.nFileSizeHigh) << 32) | fad.nFileSizeLow;
     if (size != panel.image->get_buffer()->size())
-        return L"The image file has a header or a non-standard size";
+        return msg(MImageHasHeader);
     return L"";
 }
 
@@ -477,7 +511,7 @@ static HANDLE open_image(const DetectedImage &di, bool silent)
 
     auto r = refresh_dir(panel);
     if (!r)
-        return fail(describe(L"Cannot read directory", r));
+        return fail(describe(msg(MCannotReadDirectory), r));
 
     intptr_t h = g_NextHandle++;
     g_Panels[h] = std::move(panel);
@@ -644,7 +678,7 @@ extern "C" HANDLE WINAPI OpenW(const struct OpenInfo *Info)
 
     if (wPath.empty())
     {
-        show_error(L"No disk image file specified");
+        show_error(msg(MNoImageSpecified));
         return nullptr;
     }
 
@@ -810,7 +844,7 @@ static Outcome op_error(OpContext &ctx, const std::wstring &what, const std::wst
 {
     if (!ctx.report || ctx.skipErrors)
         return Outcome::Skipped;
-    switch (ask({ ctx.action, what, reason }, { L"&Skip", L"Skip &all", L"&Cancel" }))
+    switch (ask({ ctx.action, what, reason }, { msg(MSkip), msg(MSkipAll), msg(MCancel) }))
     {
     case 0:  return Outcome::Skipped;
     case 1:  ctx.skipErrors = true; return Outcome::Skipped;
@@ -834,7 +868,7 @@ static Outcome op_broken(OpContext &ctx, const std::wstring &what, const std::ws
     ctx.broken = true;
     if (ctx.report)
         show_error(std::wstring(ctx.action) + L"\n" + what + L"\n" + reason
-                   + L"\nThe operation is stopped, the disk image is left unchanged");
+                   + L"\n" + msg(MOperationStopped));
     return Outcome::Cancelled;
 }
 
@@ -845,8 +879,8 @@ static Outcome confirm_overwrite(OpContext &ctx, const std::wstring &what)
         return Outcome::Ok;
     if (ctx.skipExisting)
         return Outcome::Skipped;
-    switch (ask({ L"File already exists", what },
-                { L"&Overwrite", L"&All", L"&Skip", L"S&kip all", L"&Cancel" }))
+    switch (ask({ msg(MFileExists), what },
+                { msg(MOverwrite), msg(MAll), msg(MSkip), msg(MSkipAllExisting), msg(MCancel) }))
     {
     case 0:  return Outcome::Ok;
     case 1:  ctx.overwriteAll = true; return Outcome::Ok;
@@ -873,7 +907,7 @@ static Outcome extract_file(OpContext &ctx, const dsk_tools::UniversalFile &uf,
     dsk_tools::BYTES fileData;
     auto r = ctx.panel.filesystem->get_file(uf, "FILE_BINARY", fileData);
     if (!r)
-        return op_error(ctx, outPath, describe(L"Cannot read file from image", r));
+        return op_error(ctx, outPath, describe(msg(MCannotReadFile), r));
 
     // A read-only target (e.g. extracted before from an R/O file) would fail CREATE_ALWAYS
     if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY))
@@ -893,7 +927,7 @@ static Outcome extract_file(OpContext &ctx, const dsk_tools::UniversalFile &uf,
     if (!ok || written != fileData.size())
     {
         DeleteFileW(outPath.c_str());
-        return op_error(ctx, outPath, ok ? std::wstring(L"Write incomplete") : last_error_text(err));
+        return op_error(ctx, outPath, ok ? std::wstring(msg(MWriteIncomplete)) : last_error_text(err));
     }
     return Outcome::Ok;
 }
@@ -930,7 +964,7 @@ static Outcome extract_dir(OpContext &ctx, const dsk_tools::UniversalFile &dir,
     if (r)
         o = extract_list(ctx, files, build_wide_names(files), dirPath);
     else
-        o = op_error(ctx, dirPath, describe(L"Cannot read directory", r));
+        o = op_error(ctx, dirPath, describe(msg(MCannotReadDirectory), r));
     fs.cd_up();
     return o;
 }
@@ -987,11 +1021,11 @@ static std::wstring save_image(PluginPanel &panel)
                                            static_cast<uint8_t>(panel.filesystem->get_volume_id()),
                                            panel.image.get());
     if (!writer)
-        return L"No writer for " + to_wide(panel.formatId);
+        return msg(MNoWriter, { to_wide(panel.formatId) });
     dsk_tools::BYTES buffer;
     auto r = writer->write(buffer);
     if (!r)
-        return describe(L"Cannot build the image", r);
+        return describe(msg(MCannotBuildImage), r);
 
     std::wstring tmp = panel.hostPath + L".dsktools-tmp";
     HANDLE h = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
@@ -1033,7 +1067,7 @@ static bool commit_changes(PluginPanel &panel, bool report)
         return true;
     }
     if (report)
-        show_error(L"Cannot save the disk image, the changes are discarded\n" + error);
+        show_error(msg(MCannotSave) + (L"\n" + error));
     discard_changes(panel, report);
     return false;
 }
@@ -1047,7 +1081,7 @@ static void discard_changes(PluginPanel &panel, bool report)
     if (!reload.empty())
     {
         if (report)
-            show_error(L"Cannot reload the disk image\n" + reload);
+            show_error(msg(MCannotReload) + (L"\n" + reload));
         return;
     }
     if (panel.cpmUsers)
@@ -1065,15 +1099,15 @@ static void discard_changes(PluginPanel &panel, bool report)
 }
 
 // Can the operation `cap` be done on this image? Shows why not unless silent.
-static bool check_writable(PluginPanel &panel, bool report, dsk_tools::FSCaps cap, const wchar_t *what)
+static bool check_writable(PluginPanel &panel, bool report, dsk_tools::FSCaps cap, LngId what)
 {
     std::wstring reason = read_only_reason(panel);
     if (reason.empty() && !static_cast<bool>(panel.filesystem->get_caps() & cap))
-        reason = fs_name(panel.filesystem->get_fs()) + L" does not support " + what;
+        reason = msg(MFsNoSupport, { fs_name(panel.filesystem->get_fs()), msg(what) });
     if (reason.empty())
         return true;
     if (report)
-        show_error(L"The disk image cannot be modified\n" + reason);
+        show_error(msg(MCannotModify) + (L"\n" + reason));
     return false;
 }
 
@@ -1093,7 +1127,7 @@ static bool read_host_file(const std::wstring &path, dsk_tools::BYTES &data, std
     if (ok && size.QuadPart > 16 * 1024 * 1024)
     {
         CloseHandle(h);
-        error = L"The file is too large for a disk image";
+        error = msg(MFileTooLarge);
         return false;
     }
     DWORD read = 0;
@@ -1128,7 +1162,7 @@ static bool find_entry(PluginPanel &panel, const std::wstring &name, dsk_tools::
 static std::wstring name_error(PluginPanel &panel, const dsk_tools::Result &r, const wchar_t *what)
 {
     if (r.code == dsk_tools::ErrorCode::InvalidName)
-        return L"The name is not valid for " + fs_name(panel.filesystem->get_fs());
+        return msg(MInvalidName, { fs_name(panel.filesystem->get_fs()) });
     return describe(what, r);
 }
 
@@ -1148,7 +1182,7 @@ static Outcome put_file(OpContext &ctx, const std::wstring &srcPath, const std::
     if (find_entry(panel, name, existing))
     {
         if (existing.is_dir)
-            return op_error(ctx, name, L"A directory with this name exists");
+            return op_error(ctx, name, msg(MDirExists));
         Outcome o = confirm_overwrite(ctx, name);
         if (o != Outcome::Ok)
             return o;
@@ -1158,8 +1192,8 @@ static Outcome put_file(OpContext &ctx, const std::wstring &srcPath, const std::
         {
             auto r = fs.delete_file(existing);
             if (!r)
-                return fails_before_change(r) ? op_error(ctx, name, describe(L"Cannot replace the file", r))
-                                              : op_broken(ctx, name, describe(L"Cannot replace the file", r));
+                return fails_before_change(r) ? op_error(ctx, name, describe(msg(MCannotReplace), r))
+                                              : op_broken(ctx, name, describe(msg(MCannotReplace), r));
             ctx.changed = true;
         }
     }
@@ -1181,8 +1215,8 @@ static Outcome put_file(OpContext &ctx, const std::wstring &srcPath, const std::
 
     auto r = fs.put_file(uf, format, data, replace);
     if (!r)
-        return fails_before_change(r) ? op_error(ctx, name, name_error(panel, r, L"Cannot write the file"))
-                                      : op_broken(ctx, name, name_error(panel, r, L"Cannot write the file"));
+        return fails_before_change(r) ? op_error(ctx, name, name_error(panel, r, msg(MCannotWrite)))
+                                      : op_broken(ctx, name, name_error(panel, r, msg(MCannotWrite)));
     ctx.changed = true;
     return Outcome::Ok;
 }
@@ -1195,7 +1229,7 @@ static Outcome put_dir(OpContext &ctx, const std::wstring &srcPath, const std::w
     auto &panel = ctx.panel;
     auto &fs = *panel.filesystem;
     if (panel.cpmUsers || !static_cast<bool>(fs.get_caps() & dsk_tools::FSCaps::MkDir))
-        return op_error(ctx, name, fs_name(fs.get_fs()) + L" has no directories");
+        return op_error(ctx, name, msg(MNoDirectories, { fs_name(fs.get_fs()) }));
 
     dsk_tools::UniversalFile dir;
     if (!find_entry(panel, name, dir))
@@ -1203,15 +1237,15 @@ static Outcome put_dir(OpContext &ctx, const std::wstring &srcPath, const std::w
         dsk_tools::UniversalFile created;
         auto r = fs.mkdir(wide_to_utf8(name), created);
         if (!r)
-            return fails_before_change(r) ? op_error(ctx, name, name_error(panel, r, L"Cannot create the directory"))
-                                          : op_broken(ctx, name, name_error(panel, r, L"Cannot create the directory"));
+            return fails_before_change(r) ? op_error(ctx, name, name_error(panel, r, msg(MCannotCreateDir)))
+                                          : op_broken(ctx, name, name_error(panel, r, msg(MCannotCreateDir)));
         ctx.changed = true;
         // Enter it through a fresh listing entry, as for any other directory
         if (!find_entry(panel, name, dir))
-            return op_error(ctx, name, L"Cannot find the new directory");
+            return op_error(ctx, name, msg(MCannotFindNewDir));
     }
     else if (!dir.is_dir)
-        return op_error(ctx, name, L"A file with this name exists");
+        return op_error(ctx, name, msg(MFileWithNameExists));
 
     WIN32_FIND_DATAW fd;
     HANDLE find = FindFirstFileW(join_path(srcPath, L"*").c_str(), &fd);
@@ -1303,7 +1337,7 @@ static Outcome delete_item(OpContext &ctx, const dsk_tools::UniversalFile &uf, c
         auto r = list_dir(fs, files);
         Outcome result = Outcome::Ok;
         if (!r)
-            result = op_error(ctx, name, describe(L"Cannot read the directory", r));
+            result = op_error(ctx, name, describe(msg(MCannotReadDirectory), r));
         auto names = build_wide_names(files);
         for (size_t i = 0; r && i < files.size(); ++i)
         {
@@ -1323,8 +1357,8 @@ static Outcome delete_item(OpContext &ctx, const dsk_tools::UniversalFile &uf, c
 
     auto r = fs.delete_file(uf);
     if (!r)
-        return fails_before_change(r) ? op_error(ctx, name, describe(L"Cannot delete", r))
-                                      : op_broken(ctx, name, describe(L"Cannot delete", r));
+        return fails_before_change(r) ? op_error(ctx, name, describe(msg(MCannotDelete), r))
+                                      : op_broken(ctx, name, describe(msg(MCannotDelete), r));
     ctx.changed = true;
     return Outcome::Ok;
 }
@@ -1353,25 +1387,46 @@ static bool copy_dialog(const GetFilesInfo *Info, PluginPanel &panel, std::wstri
                           : std::wstring(Info->PanelItem[0].FileName ? Info->PanelItem[0].FileName : L"");
         if (name.size() > 50)
             name = name.substr(0, 47) + L"...";
-        prompt = (move ? L"Move \"" : L"Copy \"") + name + L"\" to:";
+        prompt = msg(move ? MMoveTo : MCopyTo, { L"\"" + name + L"\"" });
     }
     else
-        prompt = (move ? L"Move " : L"Copy ") + std::to_wstring(Info->ItemsNumber) + L" items to:";
+        prompt = msg(move ? MMoveTo : MCopyTo, { items_text(Info->ItemsNumber) });
+
+    // Radio buttons in a row, each "( ) text" as wide as its translation
+    const wchar_t *radio[] = { msg(MExistingAsk), msg(MExistingOverwrite), msg(MExistingSkip) };
+    auto shown = [](const wchar_t *text)    // without the hotkey '&'
+    {
+        intptr_t len = 0;
+        for (const wchar_t *c = text; *c; ++c)
+        {
+            if (*c == L'&')
+            {
+                if (c[1] != L'&')
+                    continue;   // hotkey marker
+                ++c;            // "&&" shows one '&'
+            }
+            ++len;
+        }
+        return len;
+    };
+    intptr_t radioX[3] = { 5 };
+    for (int i = 1; i < 3; ++i)
+        radioX[i] = radioX[i - 1] + 4 + shown(radio[i - 1]) + 3;
 
     enum { I_BOX, I_PROMPT, I_DEST, I_SEP1, I_EXISTING, I_ASK, I_OVERWRITE, I_SKIP, I_SEP2, I_OK, I_CANCEL };
     const intptr_t W = 76, H = 11;
     FarDialogItem items[] = {
-        { DI_DOUBLEBOX,    3, 1, W - 4, H - 2, {},  nullptr, nullptr, DIF_NONE, move ? L"Move" : L"Copy" },
+        { DI_DOUBLEBOX,    3, 1, W - 4, H - 2, {},  nullptr, nullptr, DIF_NONE, msg(move ? MMoveTitle : MCopyTitle) },
         { DI_TEXT,         5, 2, W - 6, 2,     {},  nullptr, nullptr, DIF_NONE, prompt.c_str() },
         { DI_EDIT,         5, 3, W - 6, 3,     {},  L"Copy",  nullptr, DIF_HISTORY | DIF_EDITPATH | DIF_EDITEXPAND, dest.c_str() },
         { DI_TEXT,        -1, 4, 0,     4,     {},  nullptr, nullptr, DIF_SEPARATOR, L"" },
-        { DI_TEXT,         5, 5, W - 6, 5,     {},  nullptr, nullptr, DIF_NONE, L"Already existing files:" },
-        { DI_RADIOBUTTON,  5, 6, 0,     6,     { 1 }, nullptr, nullptr, DIF_GROUP, L"&Ask" },
-        { DI_RADIOBUTTON, 20, 6, 0,     6,     { 0 }, nullptr, nullptr, DIF_NONE,  L"&Overwrite" },
-        { DI_RADIOBUTTON, 38, 6, 0,     6,     { 0 }, nullptr, nullptr, DIF_NONE,  L"&Skip" },
+        { DI_TEXT,         5, 5, W - 6, 5,     {},  nullptr, nullptr, DIF_NONE, msg(MExistingFiles) },
+        { DI_RADIOBUTTON, radioX[0], 6, 0, 6,  { 1 }, nullptr, nullptr, DIF_GROUP, radio[0] },
+        { DI_RADIOBUTTON, radioX[1], 6, 0, 6,  { 0 }, nullptr, nullptr, DIF_NONE,  radio[1] },
+        { DI_RADIOBUTTON, radioX[2], 6, 0, 6,  { 0 }, nullptr, nullptr, DIF_NONE,  radio[2] },
         { DI_TEXT,        -1, 7, 0,     7,     {},  nullptr, nullptr, DIF_SEPARATOR, L"" },
-        { DI_BUTTON,       0, 8, 0,     8,     {},  nullptr, nullptr, DIF_CENTERGROUP | DIF_DEFAULTBUTTON, move ? L"&Move" : L"&Copy" },
-        { DI_BUTTON,       0, 8, 0,     8,     {},  nullptr, nullptr, DIF_CENTERGROUP, L"Cancel" },
+        { DI_BUTTON,       0, 8, 0,     8,     {},  nullptr, nullptr, DIF_CENTERGROUP | DIF_DEFAULTBUTTON, msg(move ? MMoveButton : MCopyButton) },
+        { DI_BUTTON,       0, 8, 0,     8,     {},  nullptr, nullptr, DIF_CENTERGROUP, msg(MDialogCancel) },
     };
 
     HANDLE hDlg = PSI.DialogInit(&PluginUuid, &DialogUuid, -1, -1, W, H, nullptr,
@@ -1451,13 +1506,13 @@ extern "C" intptr_t WINAPI GetFilesW(struct GetFilesInfo *Info)
     const bool silent = (Info->OpMode & (OPM_SILENT | OPM_FIND | OPM_QUICKVIEW)) != 0;
 
     // F6: extract, then delete from the image
-    if (Info->Move && !check_writable(panel, !silent, dsk_tools::FSCaps::Delete, L"deleting files"))
+    if (Info->Move && !check_writable(panel, !silent, dsk_tools::FSCaps::Delete, MOpDeleting))
         return FALSE;
 
     // F3/F4/Ctrl+Q extract into a temporary folder: no dialog and no overwrite questions there
     const bool interactive =
         (Info->OpMode & (OPM_SILENT | OPM_FIND | OPM_VIEW | OPM_EDIT | OPM_QUICKVIEW | OPM_DESCR)) == 0;
-    OpContext ctx{ panel, interactive, !silent, L"Cannot extract" };
+    OpContext ctx{ panel, interactive, !silent, msg(MCannotExtract) };
 
     std::wstring destDir = Info->DestPath ? Info->DestPath : L"";
     std::wstring renameTo;      // one file copied under a name typed in the dialog
@@ -1487,7 +1542,7 @@ extern "C" intptr_t WINAPI GetFilesW(struct GetFilesInfo *Info)
         }
         if (!create_host_dirs(destDir))
         {
-            show_error(L"Cannot create the folder\n" + destDir + L"\n" + last_error_text(GetLastError()));
+            show_error(msg(MCannotCreateFolder) + (L"\n" + destDir + L"\n" + last_error_text(GetLastError())));
             return FALSE;
         }
         panel.destPath  = destDir;
@@ -1520,7 +1575,7 @@ extern "C" intptr_t WINAPI GetFilesW(struct GetFilesInfo *Info)
     if (Info->Move && !extracted.empty())
     {
         // Only what was extracted completely is deleted
-        ctx.action = L"Cannot delete";
+        ctx.action = msg(MCannotDelete);
         std::vector<std::pair<dsk_tools::UniversalFile, std::wstring>> victims;
         for (size_t i : extracted)
         {
@@ -1576,17 +1631,15 @@ static bool confirm_delete(PluginPanel &panel, const Victims &victims)
     if (victims.size() == 1)
     {
         const auto &v = victims.front();
-        lines.push_back(!v.first.is_dir ? L"Do you wish to delete the file"
-                        : panel.cpmUsers ? L"Do you wish to delete the user area"
-                        : L"Do you wish to delete the folder");
+        lines.push_back(msg(!v.first.is_dir ? MDeleteFile : panel.cpmUsers ? MDeleteArea : MDeleteFolder));
         lines.push_back(v.second);
     }
     else
     {
-        lines.push_back(L"Do you wish to delete");
-        lines.push_back(std::to_wstring(victims.size()) + L" items");
+        lines.push_back(msg(MDeleteItems));
+        lines.push_back(items_text(victims.size()));
     }
-    return ask(lines, { L"&Delete", L"&Cancel" }) == 0;
+    return ask(lines, { msg(MDelete), msg(MCancel) }) == 0;
 }
 
 // Does a selected folder (or CP/M user area) have anything in it?
@@ -1613,7 +1666,7 @@ extern "C" intptr_t WINAPI DeleteFilesW(const struct DeleteFilesInfo *Info)
 
     auto &panel = it->second;
     const bool silent = (Info->OpMode & OPM_SILENT) != 0;
-    if (!check_writable(panel, !silent, dsk_tools::FSCaps::Delete, L"deleting files"))
+    if (!check_writable(panel, !silent, dsk_tools::FSCaps::Delete, MOpDeleting))
         return FALSE;
 
     // Copies: the listing is re-read only after the whole operation
@@ -1633,16 +1686,15 @@ extern "C" intptr_t WINAPI DeleteFilesW(const struct DeleteFilesInfo *Info)
     const bool confirmFolders = !silent && far_confirmation(L"DeleteFolder");
     bool deleteAllFolders = false;
 
-    OpContext ctx{ panel, false, !silent, L"Cannot delete" };
+    OpContext ctx{ panel, false, !silent, msg(MCannotDelete) };
     bool cancelled = false, anyOk = false;
     for (const auto &v : victims)
     {
         // As FAR does: once more for every selected folder that is not empty
         if (v.first.is_dir && confirmFolders && !deleteAllFolders && dir_has_entries(panel, v.first))
         {
-            intptr_t answer = ask({ panel.cpmUsers ? L"The following user area will be deleted with its files:"
-                                                   : L"The following folder will be deleted:", v.second },
-                                  { L"&Delete", L"&All", L"&Skip", L"&Cancel" });
+            intptr_t answer = ask({ msg(panel.cpmUsers ? MDeleteNonEmptyArea : MDeleteNonEmptyFolder), v.second },
+                                  { msg(MDelete), msg(MAll), msg(MSkip), msg(MCancel) });
             if (answer == 1)
                 deleteAllFolders = true;
             else if (answer == 2)
@@ -1690,12 +1742,12 @@ extern "C" intptr_t WINAPI MakeDirectoryW(struct MakeDirectoryInfo *Info)
     const bool silent = (Info->OpMode & OPM_SILENT) != 0;
     if (!check_writable(panel, !silent,
                         panel.cpmUsers ? dsk_tools::FSCaps::Add : dsk_tools::FSCaps::MkDir,
-                        L"directories"))
+                        MOpDirectories))
         return FALSE;
     if (panel.cpmUsers && panel.cpmUser != 0)
     {
         if (!silent)
-            show_error(L"CP/M user areas are created at the root of the image");
+            show_error(msg(MAreasAtRoot));
         return FALSE;
     }
 
@@ -1704,8 +1756,8 @@ extern "C" intptr_t WINAPI MakeDirectoryW(struct MakeDirectoryInfo *Info)
     {
         static const UUID PluginUuid = PLUGIN_UUID;
         wchar_t buf[256] = {};
-        if (!PSI.InputBox(&PluginUuid, nullptr, L"Make directory",
-                          panel.cpmUsers ? L"CP/M user area (1..31 or USER_nn):" : L"Directory name:",
+        if (!PSI.InputBox(&PluginUuid, nullptr, msg(MMakeDirTitle),
+                          msg(panel.cpmUsers ? MMakeDirArea : MMakeDirName),
                           L"DskTools.MakeDirectory", name.c_str(), buf, ARRAYSIZE(buf),
                           nullptr, FIB_BUTTONS | FIB_NOUSELASTHISTORY))
             return -1;
@@ -1727,7 +1779,7 @@ extern "C" intptr_t WINAPI MakeDirectoryW(struct MakeDirectoryInfo *Info)
         if (user < 1 || user > static_cast<int>(CPM_MAX_USER))
         {
             if (!silent)
-                show_error(L"Enter a user area number 1..31 or USER_nn");
+                show_error(msg(MBadUserArea));
             return FALSE;
         }
         panel.cpmNewAreas.insert(static_cast<unsigned>(user));
@@ -1742,7 +1794,7 @@ extern "C" intptr_t WINAPI MakeDirectoryW(struct MakeDirectoryInfo *Info)
     if (!r)
     {
         if (!silent)
-            show_error(name + L"\n" + name_error(panel, r, L"Cannot create the directory"));
+            show_error(name + L"\n" + name_error(panel, r, msg(MCannotCreateDir)));
         if (!fails_before_change(r))
             discard_changes(panel, !silent);
         return FALSE;
@@ -1766,10 +1818,10 @@ extern "C" intptr_t WINAPI PutFilesW(const struct PutFilesInfo *Info)
 
     auto &panel = it->second;
     const bool silent = (Info->OpMode & (OPM_SILENT | OPM_FIND)) != 0;
-    if (!check_writable(panel, !silent, dsk_tools::FSCaps::Add, L"adding files"))
+    if (!check_writable(panel, !silent, dsk_tools::FSCaps::Add, MOpAdding))
         return FALSE;
 
-    OpContext ctx{ panel, !silent, !silent, L"Cannot copy into the disk image" };
+    OpContext ctx{ panel, !silent, !silent, msg(MCannotCopyInto) };
     std::vector<size_t> done;
     bool cancelled = false;
     for (size_t i = 0; i < Info->ItemsNumber && !cancelled; ++i)

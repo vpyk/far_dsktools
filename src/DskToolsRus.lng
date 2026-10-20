@@ -1,0 +1,142 @@
+﻿.Language=Russian,Russian (Русский)
+
+//[MFormatDetectionFailed]
+"Не удалось определить формат"
+//[MNoImageSpecified]
+"Не указан файл образа диска"
+//[MUnsupportedImageType]
+"Неподдерживаемый тип образа: %1"
+//[MCannotLoadImage]
+"Не удалось загрузить образ"
+//[MUnsupportedFilesystem]
+"Неподдерживаемая файловая система: %1"
+//[MCannotOpenFilesystem]
+"Не удалось открыть файловую систему"
+//[MCannotReadDirectory]
+"Не удалось прочитать каталог"
+//[MCannotModify]
+"Образ диска нельзя изменить"
+//[MFsReadOnly]
+"dsk_tools поддерживает %1 только для чтения"
+//[MFormatNotSaved]
+"Сохранение образов %1 пока не поддерживается"
+//[MCannotReadAttributes]
+"Не удалось прочитать атрибуты файла образа"
+//[MImageReadOnly]
+"Файл образа доступен только для чтения"
+//[MImageHasHeader]
+"У файла образа есть заголовок или нестандартный размер"
+//[MFsNoSupport]
+"%1 не поддерживает %2"
+//[MOpDeleting]
+"удаление файлов"
+//[MOpDirectories]
+"каталоги"
+//[MOpAdding]
+"добавление файлов"
+//[MSkip]
+"&Пропустить"
+//[MSkipAll]
+"Пропустить &все"
+//[MCancel]
+"&Отмена"
+//[MOperationStopped]
+"Операция прервана, образ диска оставлен без изменений"
+//[MFileExists]
+"Файл уже существует"
+//[MOverwrite]
+"&Заменить"
+//[MAll]
+"&Все"
+//[MSkipAllExisting]
+"П&ропустить все"
+//[MCannotExtract]
+"Не удалось извлечь"
+//[MCannotReadFile]
+"Не удалось прочитать файл из образа"
+//[MWriteIncomplete]
+"Файл записан не полностью"
+//[MCannotCreateFolder]
+"Не удалось создать папку"
+//[MNoWriter]
+"Нет модуля записи для %1"
+//[MCannotBuildImage]
+"Не удалось сформировать образ"
+//[MCannotSave]
+"Не удалось сохранить образ диска, изменения отменены"
+//[MCannotReload]
+"Не удалось перечитать образ диска"
+//[MCannotCopyInto]
+"Не удалось скопировать в образ диска"
+//[MFileTooLarge]
+"Файл слишком велик для образа диска"
+//[MInvalidName]
+"Имя недопустимо для %1"
+//[MDirExists]
+"Уже есть каталог с таким именем"
+//[MFileWithNameExists]
+"Уже есть файл с таким именем"
+//[MCannotReplace]
+"Не удалось заменить файл"
+//[MCannotWrite]
+"Не удалось записать файл"
+//[MNoDirectories]
+"В %1 нет каталогов"
+//[MCannotCreateDir]
+"Не удалось создать каталог"
+//[MCannotFindNewDir]
+"Не удалось найти созданный каталог"
+//[MCannotDelete]
+"Не удалось удалить"
+//[MDeleteFile]
+"Вы хотите удалить файл"
+//[MDeleteFolder]
+"Вы хотите удалить каталог"
+//[MDeleteArea]
+"Вы хотите удалить область пользователя"
+//[MDeleteItems]
+"Вы хотите удалить"
+//[MDeleteNonEmptyFolder]
+"Будет удалён каталог со всем содержимым:"
+//[MDeleteNonEmptyArea]
+"Будет удалена область пользователя со всеми файлами:"
+//[MDelete]
+"&Удалить"
+//[MItemsOne]
+"%1 элемент"
+//[MItemsFew]
+"%1 элемента"
+//[MItemsMany]
+"%1 элементов"
+//[MCopyTitle]
+"Копирование"
+//[MMoveTitle]
+"Перенос"
+//[MCopyTo]
+"Копировать %1 в:"
+//[MMoveTo]
+"Переместить %1 в:"
+//[MExistingFiles]
+"Уже существующие файлы:"
+//[MExistingAsk]
+"&Спрашивать"
+//[MExistingOverwrite]
+"Пере&записывать"
+//[MExistingSkip]
+"П&ропускать"
+//[MCopyButton]
+"&Копировать"
+//[MMoveButton]
+"&Переместить"
+//[MDialogCancel]
+"Отмена"
+//[MMakeDirTitle]
+"Создание каталога"
+//[MMakeDirName]
+"Имя каталога:"
+//[MMakeDirArea]
+"Область пользователя CP/M (1..31 или USER_nn):"
+//[MBadUserArea]
+"Введите номер области 1..31 или USER_nn"
+//[MAreasAtRoot]
+"Области пользователя CP/M создаются в корне образа"

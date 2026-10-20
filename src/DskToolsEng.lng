@@ -1,0 +1,142 @@
+﻿.Language=English,English
+
+//[MFormatDetectionFailed]
+"Format detection failed"
+//[MNoImageSpecified]
+"No disk image file specified"
+//[MUnsupportedImageType]
+"Unsupported image type: %1"
+//[MCannotLoadImage]
+"Cannot load image"
+//[MUnsupportedFilesystem]
+"Unsupported filesystem: %1"
+//[MCannotOpenFilesystem]
+"Cannot open filesystem"
+//[MCannotReadDirectory]
+"Cannot read directory"
+//[MCannotModify]
+"The disk image cannot be modified"
+//[MFsReadOnly]
+"%1 is read-only in dsk_tools"
+//[MFormatNotSaved]
+"Saving %1 images is not supported yet"
+//[MCannotReadAttributes]
+"Cannot read the image file attributes"
+//[MImageReadOnly]
+"The image file is read-only"
+//[MImageHasHeader]
+"The image file has a header or a non-standard size"
+//[MFsNoSupport]
+"%1 does not support %2"
+//[MOpDeleting]
+"deleting files"
+//[MOpDirectories]
+"directories"
+//[MOpAdding]
+"adding files"
+//[MSkip]
+"&Skip"
+//[MSkipAll]
+"Skip &all"
+//[MCancel]
+"&Cancel"
+//[MOperationStopped]
+"The operation is stopped, the disk image is left unchanged"
+//[MFileExists]
+"File already exists"
+//[MOverwrite]
+"&Overwrite"
+//[MAll]
+"&All"
+//[MSkipAllExisting]
+"S&kip all"
+//[MCannotExtract]
+"Cannot extract"
+//[MCannotReadFile]
+"Cannot read file from image"
+//[MWriteIncomplete]
+"Write incomplete"
+//[MCannotCreateFolder]
+"Cannot create the folder"
+//[MNoWriter]
+"No writer for %1"
+//[MCannotBuildImage]
+"Cannot build the image"
+//[MCannotSave]
+"Cannot save the disk image, the changes are discarded"
+//[MCannotReload]
+"Cannot reload the disk image"
+//[MCannotCopyInto]
+"Cannot copy into the disk image"
+//[MFileTooLarge]
+"The file is too large for a disk image"
+//[MInvalidName]
+"The name is not valid for %1"
+//[MDirExists]
+"A directory with this name exists"
+//[MFileWithNameExists]
+"A file with this name exists"
+//[MCannotReplace]
+"Cannot replace the file"
+//[MCannotWrite]
+"Cannot write the file"
+//[MNoDirectories]
+"%1 has no directories"
+//[MCannotCreateDir]
+"Cannot create the directory"
+//[MCannotFindNewDir]
+"Cannot find the new directory"
+//[MCannotDelete]
+"Cannot delete"
+//[MDeleteFile]
+"Do you wish to delete the file"
+//[MDeleteFolder]
+"Do you wish to delete the folder"
+//[MDeleteArea]
+"Do you wish to delete the user area"
+//[MDeleteItems]
+"Do you wish to delete"
+//[MDeleteNonEmptyFolder]
+"The following folder will be deleted:"
+//[MDeleteNonEmptyArea]
+"The following user area will be deleted with its files:"
+//[MDelete]
+"&Delete"
+//[MItemsOne]
+"%1 item"
+//[MItemsFew]
+"%1 items"
+//[MItemsMany]
+"%1 items"
+//[MCopyTitle]
+"Copy"
+//[MMoveTitle]
+"Move"
+//[MCopyTo]
+"Copy %1 to:"
+//[MMoveTo]
+"Move %1 to:"
+//[MExistingFiles]
+"Already existing files:"
+//[MExistingAsk]
+"&Ask"
+//[MExistingOverwrite]
+"&Overwrite"
+//[MExistingSkip]
+"&Skip"
+//[MCopyButton]
+"&Copy"
+//[MMoveButton]
+"&Move"
+//[MDialogCancel]
+"Cancel"
+//[MMakeDirTitle]
+"Make directory"
+//[MMakeDirName]
+"Directory name:"
+//[MMakeDirArea]
+"CP/M user area (1..31 or USER_nn):"
+//[MBadUserArea]
+"Enter a user area number 1..31 or USER_nn"
+//[MAreasAtRoot]
+"CP/M user areas are created at the root of the image"

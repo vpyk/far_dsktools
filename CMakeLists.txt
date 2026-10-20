@@ -45,6 +45,30 @@ configure_file(
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${DSK_TOOLS_DIR}/src/diskdefs)
 target_include_directories(plug PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
+# ── Language files ─────────────────────────────────────────────
+# PSI.GetMsg takes strings by index: every .lng must have the labels //[Mxxx] of
+# enum LngId (src/lang.hpp) in the same order, one string after each
+set(LNG_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/DskToolsEng.lng
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/DskToolsRus.lng
+)
+file(STRINGS src/lang.hpp LNG_IDS REGEX "^ *M[A-Za-z0-9_]+,")
+list(TRANSFORM LNG_IDS REPLACE "^ *(M[A-Za-z0-9_]+),.*" "\\1")
+list(LENGTH LNG_IDS LNG_COUNT)
+foreach(lng ${LNG_FILES})
+    file(STRINGS ${lng} labels ENCODING UTF-8 REGEX "^//\\[M[A-Za-z0-9_]+\\]")
+    list(TRANSFORM labels REPLACE "^//\\[(M[A-Za-z0-9_]+)\\].*" "\\1")
+    file(STRINGS ${lng} texts ENCODING UTF-8 REGEX "^\"")
+    list(LENGTH texts text_count)
+    if(NOT labels STREQUAL LNG_IDS OR NOT text_count EQUAL LNG_COUNT)
+        message(FATAL_ERROR "${lng} does not match enum LngId in src/lang.hpp")
+    endif()
+endforeach()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS src/lang.hpp ${LNG_FILES})
+# FAR looks for them next to the DLL
+add_custom_command(TARGET plug POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${LNG_FILES} $<TARGET_FILE_DIR:plug>)
+
 if(MSVC)
     target_compile_options(plug PRIVATE /W4)
 else()
