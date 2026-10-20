@@ -193,6 +193,33 @@ static std::wstring describe(const wchar_t *what, const dsk_tools::Result &r)
     return msg;
 }
 
+// ── File dates ─────────────────────────────────────────────────
+// dsk_tools gives a date as the retro system kept it (FAT, ProDOS, RT-11, Sprite OS):
+// local time, no time zone. FAR takes UTC and shows it in local time, so the date goes
+// through the local time zone and comes back on screen unchanged. No date (or no
+// time) gives a zero FILETIME (or midnight); FAR leaves a zero date column empty.
+static FILETIME to_filetime(const dsk_tools::FileDate &d)
+{
+    FILETIME ft = {};
+    if (!d.valid())
+        return ft;
+    SYSTEMTIME local = {};
+    local.wYear   = d.year;
+    local.wMonth  = d.month;
+    local.wDay    = d.day;
+    local.wHour   = static_cast<WORD>(d.hour   >= 0 ? d.hour   : 0);
+    local.wMinute = static_cast<WORD>(d.minute >= 0 ? d.minute : 0);
+    SYSTEMTIME utc;
+    if (!TzSpecificLocalTimeToSystemTime(nullptr, &local, &utc) || !SystemTimeToFileTime(&utc, &ft))
+        return {};  // e.g. 31 February
+    return ft;
+}
+
+static bool has_time(const FILETIME &ft)
+{
+    return ft.dwLowDateTime || ft.dwHighDateTime;
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  Refresh directory listing after navigation
 // ═══════════════════════════════════════════════════════════════
@@ -714,7 +741,9 @@ extern "C" void WINAPI GetOpenPanelInfoW(struct OpenPanelInfo *Info)
     Info->DescrFilesNumber = 0;
     Info->PanelModesArray  = nullptr;
     Info->PanelModesNumber = 0;
-    Info->StartPanelMode   = '4';
+    // Full (name, size, date, time) where the filesystem keeps dates, Wide (name, size) otherwise
+    bool dates = static_cast<bool>(it->second.filesystem->get_caps() & dsk_tools::FSCaps::Date);
+    Info->StartPanelMode   = dates ? '3' : '4';
     Info->StartSortMode    = SM_UNSORTED;
     Info->StartSortOrder   = 0;
     Info->KeyBar           = nullptr;
@@ -758,6 +787,7 @@ extern "C" intptr_t WINAPI GetFindDataW(struct GetFindDataInfo *Info)
         items[i].CustomColumnNumber = 0;
         items[i].Flags             = PPIF_NONE;
         items[i].UserData          = { reinterpret_cast<void*>(static_cast<intptr_t>(i)), nullptr };
+        items[i].LastWriteTime     = to_filetime(uf.date);
         items[i].FileSize          = uf.size;
         items[i].AllocationSize    = uf.size;
         items[i].FileAttributes    = uf.is_dir    ? FILE_ATTRIBUTE_DIRECTORY
@@ -925,6 +955,9 @@ static Outcome extract_file(OpContext &ctx, const dsk_tools::UniversalFile &uf,
     BOOL ok = WriteFile(hFile, fileData.data(),
                         static_cast<DWORD>(fileData.size()), &written, nullptr);
     DWORD err = GetLastError();
+    FILETIME ft = to_filetime(uf.date);
+    if (ok && has_time(ft))
+        SetFileTime(hFile, nullptr, nullptr, &ft);
     CloseHandle(hFile);
     if (!ok || written != fileData.size())
     {
@@ -968,6 +1001,19 @@ static Outcome extract_dir(OpContext &ctx, const dsk_tools::UniversalFile &dir,
     else
         o = op_error(ctx, dirPath, describe(msg(MCannotReadDirectory), r));
     fs.cd_up();
+
+    // After its contents: writing them changes the folder's time
+    FILETIME ft = to_filetime(dir.date);
+    if (o != Outcome::Cancelled && has_time(ft))
+    {
+        HANDLE h = CreateFileW(dirPath.c_str(), FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                               nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+        if (h != INVALID_HANDLE_VALUE)
+        {
+            SetFileTime(h, nullptr, nullptr, &ft);
+            CloseHandle(h);
+        }
+    }
     return o;
 }
 
