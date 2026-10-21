@@ -184,13 +184,18 @@ static void show_error(const std::wstring &text)
                 items.data(), items.size(), 0);
 }
 
+// The text of a dsk_tools error (English: the library has no translations)
+static std::wstring error_text(const dsk_tools::Result &r)
+{
+    std::wstring text = to_wide(dsk_tools::decode_error(r));
+    if (!r.message.empty())
+        text += L"\n" + to_wide(r.message);
+    return text;
+}
+
 static std::wstring describe(const wchar_t *what, const dsk_tools::Result &r)
 {
-    std::wstring msg = what;
-    msg += L": " + to_wide(dsk_tools::decode_error(r));
-    if (!r.message.empty())
-        msg += L"\n" + to_wide(r.message);
-    return msg;
+    return what + (L": " + error_text(r));
 }
 
 // ── File dates ─────────────────────────────────────────────────
@@ -765,7 +770,11 @@ extern "C" void WINAPI GetOpenPanelInfoW(struct OpenPanelInfo *Info)
     Info->StartPanelMode   = dates ? '3' : '4';
     Info->StartSortMode    = SM_UNSORTED;
     Info->StartSortOrder   = 0;
-    Info->KeyBar           = nullptr;
+    // F6 only moves here (FAR's label is RenMov): renaming is Shift+F6, see ProcessPanelInputW
+    static KeyBarLabel keyBarLabels[] = { { { VK_F6, 0 }, nullptr, nullptr } };
+    static KeyBarTitles keyBar = { ARRAYSIZE(keyBarLabels), keyBarLabels };
+    keyBarLabels[0].Text = keyBarLabels[0].LongText = msg(MKeyBarMove);
+    Info->KeyBar           = &keyBar;
     Info->ShortcutData     = nullptr;
     Info->FreeSize         = 0;
     Info->UserData         = { nullptr, nullptr };
@@ -1901,9 +1910,140 @@ extern "C" intptr_t WINAPI ProcessHostFileW(const struct ProcessHostFileInfo * /
     return FALSE;
 }
 
-extern "C" intptr_t WINAPI ProcessPanelInputW(const struct ProcessPanelInputInfo * /*Info*/)
+// ── Rename (Shift+F6) ──────────────────────────────────────────
+// Without OPIF_REALNAMES FAR treats Shift+F6 on a plugin panel as F6 (FileList::ProcessKey →
+// ProcessCopyKeys), so the plugin takes the key in ProcessPanelInputW and renames the
+// current item itself.
+
+static bool is_shift_f6(const INPUT_RECORD &rec)
 {
-    return FALSE;
+    if (rec.EventType != KEY_EVENT || !rec.Event.KeyEvent.bKeyDown || rec.Event.KeyEvent.wVirtualKeyCode != VK_F6)
+        return false;
+    const DWORD state = rec.Event.KeyEvent.dwControlKeyState;
+    return (state & SHIFT_PRESSED)
+        && !(state & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED | LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED));
+}
+
+// Name of the current panel item, empty if none
+static std::wstring current_item(HANDLE hPanel, intptr_t &idx)
+{
+    size_t size = static_cast<size_t>(PSI.PanelControl(hPanel, FCTL_GETCURRENTPANELITEM, 0, nullptr));
+    if (!size) return {};
+    std::vector<char> buf(size);
+    FarGetPluginPanelItem gpi = { sizeof(FarGetPluginPanelItem), size, reinterpret_cast<PluginPanelItem *>(buf.data()) };
+    if (!PSI.PanelControl(hPanel, FCTL_GETCURRENTPANELITEM, 0, &gpi) || !gpi.Item->FileName)
+        return {};
+    idx = reinterpret_cast<intptr_t>(gpi.Item->UserData.Data);
+    return gpi.Item->FileName;
+}
+
+// Re-reads the panel and puts the cursor on `name`
+static void update_panel_cursor(HANDLE hPanel, const std::wstring &name)
+{
+    PSI.PanelControl(hPanel, FCTL_UPDATEPANEL, 1, nullptr);
+    PanelInfo pi = {};
+    pi.StructSize = sizeof(PanelInfo);
+    if (!PSI.PanelControl(hPanel, FCTL_GETPANELINFO, 0, &pi))
+        return;
+    for (size_t i = 0; i < pi.ItemsNumber; ++i)
+    {
+        size_t size = static_cast<size_t>(PSI.PanelControl(hPanel, FCTL_GETPANELITEM, i, nullptr));
+        if (!size) continue;
+        std::vector<char> buf(size);
+        FarGetPluginPanelItem gpi = { sizeof(FarGetPluginPanelItem), size, reinterpret_cast<PluginPanelItem *>(buf.data()) };
+        if (PSI.PanelControl(hPanel, FCTL_GETPANELITEM, i, &gpi) && gpi.Item->FileName
+            && name == gpi.Item->FileName)
+        {
+            PanelRedrawInfo ri = { sizeof(PanelRedrawInfo), i, pi.TopPanelItem };
+            PSI.PanelControl(hPanel, FCTL_REDRAWPANEL, 0, &ri);
+            return;
+        }
+    }
+    PSI.PanelControl(hPanel, FCTL_REDRAWPANEL, 0, nullptr);
+}
+
+static void rename_item(HANDLE hPanel, PluginPanel &panel)
+{
+    intptr_t idx = -1;
+    std::wstring oldName = current_item(hPanel, idx);
+    if (oldName.empty() || oldName == L".." || idx < 0 || static_cast<size_t>(idx) >= panel.files.size()
+        || panel.wideNames[idx] != oldName)
+        return;
+    const dsk_tools::UniversalFile uf = panel.files[idx];
+
+    if (uf.is_dir && panel.cpmUsers)
+    {
+        show_error(msg(MRenameArea));
+        return;
+    }
+    if (!check_writable(panel, true, dsk_tools::FSCaps::Rename, MOpRenaming))
+        return;
+
+    static const UUID PluginUuid = PLUGIN_UUID;
+    wchar_t buf[256] = {};
+    if (!PSI.InputBox(&PluginUuid, nullptr, msg(MRenameTitle), msg(MRenameTo, { L"\"" + oldName + L"\"" }).c_str(),
+                      L"DskTools.Rename", oldName.c_str(), buf, ARRAYSIZE(buf),
+                      nullptr, FIB_BUTTONS | FIB_NOUSELASTHISTORY))
+        return;
+    std::wstring name = buf;
+    auto first = name.find_first_not_of(L' ');
+    auto last  = name.find_last_not_of(L' ');
+    name = (first == std::wstring::npos) ? L"" : name.substr(first, last - first + 1);
+    if (name.empty() || name == oldName)
+        return;
+
+    auto fail = [&](const std::wstring &reason)
+    {
+        show_error(msg(MCannotRename) + (L"\n" + oldName + L"\n" + reason));
+    };
+
+    // The libraries of CP/M and DOS 3.3 do not look for a clash, DOS 3.3 cuts a long name.
+    // A new name differing in case only is the same file.
+    dsk_tools::UniversalFile existing;
+    if (_wcsicmp(name.c_str(), to_wide(uf.name).c_str()) != 0 && find_entry(panel, name, existing))
+    {
+        fail(msg(existing.is_dir ? MDirExists : MFileWithNameExists));
+        return;
+    }
+    if (panel.filesystem->get_fs() == dsk_tools::FS::DOS33 && name.size() > 30)
+    {
+        fail(msg(MInvalidName, { fs_name(dsk_tools::FS::DOS33) }));
+        return;
+    }
+
+    auto r = panel.filesystem->rename_file(uf, wide_to_utf8(name));
+    if (!r)
+    {
+        fail(r.code == dsk_tools::ErrorCode::InvalidName ? msg(MInvalidName, { fs_name(panel.filesystem->get_fs()) })
+             : r.code == dsk_tools::ErrorCode::FileAlreadyExists ? std::wstring(msg(MFileWithNameExists))
+             : error_text(r));
+        discard_changes(panel, true);   // nothing may be half renamed in memory
+        update_panel_cursor(hPanel, oldName);
+        return;
+    }
+    if (!commit_changes(panel, true))
+    {
+        update_panel_cursor(hPanel, oldName);
+        return;
+    }
+
+    // The filesystem may have changed the name (upper case, 8.3): show what it holds now
+    std::wstring shown = name;
+    for (const auto &n : panel.wideNames)
+        if (_wcsicmp(n.c_str(), name.c_str()) == 0)
+            shown = n;
+    update_panel_cursor(hPanel, shown);
+}
+
+extern "C" intptr_t WINAPI ProcessPanelInputW(const struct ProcessPanelInputInfo *Info)
+{
+    if (!is_shift_f6(Info->Rec))
+        return FALSE;
+    auto it = g_Panels.find(reinterpret_cast<intptr_t>(Info->hPanel));
+    if (it == g_Panels.end())
+        return FALSE;
+    rename_item(Info->hPanel, it->second);
+    return TRUE;    // never let FAR turn it into F6
 }
 
 extern "C" void WINAPI ClosePanelW(const struct ClosePanelInfo *Info)

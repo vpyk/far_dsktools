@@ -75,4 +75,10 @@ enum LngId : int
     MMakeDirArea,
     MBadUserArea,
     MAreasAtRoot,
+    MRenameTitle,
+    MRenameTo,
+    MOpRenaming,
+    MCannotRename,
+    MRenameArea,
+    MKeyBarMove,
 };

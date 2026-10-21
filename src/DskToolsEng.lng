@@ -140,3 +140,15 @@
 "Enter a user area number 1..31 or USER_nn"
 //[MAreasAtRoot]
 "CP/M user areas are created at the root of the image"
+//[MRenameTitle]
+"Rename"
+//[MRenameTo]
+"Rename %1 to:"
+//[MOpRenaming]
+"renaming files"
+//[MCannotRename]
+"Cannot rename"
+//[MRenameArea]
+"CP/M user areas cannot be renamed"
+//[MKeyBarMove]
+"Move"
