@@ -1,0 +1,106 @@
+From 3fc1cba546b548f9d5967561dea428f2cadb8173 Mon Sep 17 00:00:00 2001
+From: Viktor Pykhonin <pyk@mail.ru>
+Date: Wed, 21 Oct 2026 23:09:08 +0300
+Subject: [PATCH 1/2] CP/M, Sprite OS, Iskra-226: dir() sets UniversalFile::fs
+
+dir() of these filesystems declared `UniversalFile f;` and never set fs,
+so the field was left uninitialized. In particular fsCPM::put_file, which
+keeps the user area of a file coming from CP/M (uf.fs == FS::CPM), never
+saw a CP/M source: a file listed by dir() and put on a CP/M disk went to
+user 0 (or wherever the garbage pointed).
+
+The entries are now value-initialized (`UniversalFile f{};`, as in
+fs_rt11.cpp) and fs is set to get_fs(), as RT-11, ProDOS, Onix, FAT and
+DOS 3.3 do. FIL is only value-initialized: its get_fs() says DOS33, but
+its entries carry no DOS 3.3 metadata, so marking them DOS33 would send
+them into fsDOS33::put_file's native mode with an empty type and name.
+
+uf.fs == FS::CPM in fsCPM::put_file is the only place that checks one of
+these values.
+
+Assisted-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/filesystems/fs_cpm.cpp      | 6 ++++--
+ src/filesystems/fs_fil.cpp      | 2 +-
+ src/filesystems/fs_iskra226.cpp | 3 ++-
+ src/filesystems/fs_spriteos.cpp | 6 ++++--
+ 4 files changed, 11 insertions(+), 6 deletions(-)
+
+diff --git a/src/filesystems/fs_cpm.cpp b/src/filesystems/fs_cpm.cpp
+index a41f50d..c1ba782 100644
+--- a/src/filesystems/fs_cpm.cpp
++++ b/src/filesystems/fs_cpm.cpp
+@@ -448,7 +448,8 @@ fsCPM::fsCPM(diskImage * image, const std::string &filesystem_id, const DiskDefs
+ 
+                 // Show each surviving deleted entry on its own — extent grouping
+                 // is unreliable once the user-number byte is gone.
+-                UniversalFile f;
++                UniversalFile f{};
++                f.fs = get_fs();
+                 f.is_dir = false;
+                 f.is_deleted = true;
+                 f.name = make_file_name(*catalog[i]);
+@@ -486,7 +487,8 @@ fsCPM::fsCPM(diskImage * image, const std::string &filesystem_id, const DiskDefs
+                 prev_name = file_name;
+                 prev_st = ST;
+ 
+-                UniversalFile f;
++                UniversalFile f{};
++                f.fs = get_fs();
+                 f.is_dir = false;
+                 f.is_deleted = false;
+                 f.name = file_name;
+diff --git a/src/filesystems/fs_fil.cpp b/src/filesystems/fs_fil.cpp
+index 056640b..35149b3 100644
+--- a/src/filesystems/fs_fil.cpp
++++ b/src/filesystems/fs_fil.cpp
+@@ -93,7 +93,7 @@ namespace dsk_tools {
+ 
+         const auto * header = reinterpret_cast<FIL_header *>(image->get_sector_data(0,0,0));
+ 
+-        UniversalFile f;
++        UniversalFile f{};
+ 
+         f.name = trim(agat_to_utf(header->name, 30));
+         f.size = image->get_size()-40;
+diff --git a/src/filesystems/fs_iskra226.cpp b/src/filesystems/fs_iskra226.cpp
+index 1a7c5bb..564c602 100644
+--- a/src/filesystems/fs_iskra226.cpp
++++ b/src/filesystems/fs_iskra226.cpp
+@@ -79,7 +79,8 @@ namespace dsk_tools {
+                     const unsigned first_sector = FROM_BE_16(dir[i].FI);
+                     const unsigned last_sector = FROM_BE_16(dir[i].LA);
+ 
+-                    UniversalFile f;
++                    UniversalFile f{};
++                    f.fs = get_fs();
+                     f.is_dir = false;
+                     f.is_deleted = (T==0x1180) || (T==0x1100);
+                     f.name = trim(file_name);
+diff --git a/src/filesystems/fs_spriteos.cpp b/src/filesystems/fs_spriteos.cpp
+index 92caf33..116c7c3 100644
+--- a/src/filesystems/fs_spriteos.cpp
++++ b/src/filesystems/fs_spriteos.cpp
+@@ -201,7 +201,8 @@ namespace dsk_tools {
+         files.clear();
+ 
+         if (current_path.size() > 1) {
+-            UniversalFile updir;
++            UniversalFile updir{};
++            updir.fs = get_fs();
+             updir.name = "..";
+             updir.is_dir = true;
+             updir.is_deleted = false;
+@@ -216,7 +217,8 @@ namespace dsk_tools {
+             auto * dir_entry = reinterpret_cast<SPRITE_OS_DIR_ENTRY*>(buffer.data() + i*sizeof(SPRITE_OS_DIR_ENTRY));
+             bool is_deleted = dir_entry->NAME[0] == 0xFF;
+             if (dir_entry->NAME[0] != 0 && (!is_deleted || show_deleted)) {
+-                UniversalFile file;
++                UniversalFile file{};
++                file.fs = get_fs();
+                 file.name = trim(agat_to_utf(dir_entry->NAME, 15));
+                 file.size = dir_entry->FILELEN[0] + (dir_entry->FILELEN[1] << 8) + (dir_entry->FILELEN[2] << 16);
+                 file.is_dir = (dir_entry->STATUS & 0x01) != 0;
+-- 
+2.56.0.windows.2
+
