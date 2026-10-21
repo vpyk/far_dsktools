@@ -81,4 +81,7 @@ enum LngId : int
     MCannotRename,
     MRenameArea,
     MKeyBarMove,
+    MCannotCopy,
+    MCopySelf,
+    MCopyArea,
 };

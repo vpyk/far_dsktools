@@ -1242,6 +1242,44 @@ static std::wstring name_error(PluginPanel &panel, const dsk_tools::Result &r, c
     return describe(what, r);
 }
 
+// Makes way for a file `name` in the current directory: Ok when it is free or is to be
+// overwritten (`replace`; on DOS 3.3 the old file is deleted here: its put_file neither
+// detects nor replaces one)
+static Outcome make_room(OpContext &ctx, const std::wstring &name, bool &replace)
+{
+    auto &panel = ctx.panel;
+    auto &fs = *panel.filesystem;
+    replace = false;
+    dsk_tools::UniversalFile existing;
+    if (!find_entry(panel, name, existing))
+        return Outcome::Ok;
+    if (existing.is_dir)
+        return op_error(ctx, name, msg(MDirExists));
+    Outcome o = confirm_overwrite(ctx, name);
+    if (o != Outcome::Ok)
+        return o;
+    replace = true;
+    if (fs.get_fs() == dsk_tools::FS::DOS33)
+    {
+        auto r = fs.delete_file(existing);
+        if (!r)
+            return fails_before_change(r) ? op_error(ctx, name, describe(msg(MCannotReplace), r))
+                                          : op_broken(ctx, name, describe(msg(MCannotReplace), r));
+        ctx.changed = true;
+    }
+    return Outcome::Ok;
+}
+
+// put_file format for plain bytes
+static std::string add_format(dsk_tools::fileSystem &fs)
+{
+    std::string format = "FILE_BINARY";
+    for (const auto &f : fs.get_add_file_formats())
+        if (f == "FILE_ANY")
+            format = f;
+    return format;
+}
+
 // Copies one host file into the current directory of the image
 static Outcome put_file(OpContext &ctx, const std::wstring &srcPath, const std::wstring &name)
 {
@@ -1254,25 +1292,9 @@ static Outcome put_file(OpContext &ctx, const std::wstring &srcPath, const std::
         return op_error(ctx, srcPath, error);
 
     bool replace = false;
-    dsk_tools::UniversalFile existing;
-    if (find_entry(panel, name, existing))
-    {
-        if (existing.is_dir)
-            return op_error(ctx, name, msg(MDirExists));
-        Outcome o = confirm_overwrite(ctx, name);
-        if (o != Outcome::Ok)
-            return o;
-        replace = true;
-        // DOS 3.3 put_file neither detects nor replaces an existing file
-        if (fs.get_fs() == dsk_tools::FS::DOS33)
-        {
-            auto r = fs.delete_file(existing);
-            if (!r)
-                return fails_before_change(r) ? op_error(ctx, name, describe(msg(MCannotReplace), r))
-                                              : op_broken(ctx, name, describe(msg(MCannotReplace), r));
-            ctx.changed = true;
-        }
-    }
+    Outcome o = make_room(ctx, name, replace);
+    if (o != Outcome::Ok)
+        return o;
 
     dsk_tools::UniversalFile uf{};
     uf.fs   = dsk_tools::FS::None;
@@ -1285,12 +1307,7 @@ static Outcome put_file(OpContext &ctx, const std::wstring &srcPath, const std::
         uf.attributes = panel.cpmUser << 8;
     }
 
-    std::string format = "FILE_BINARY";
-    for (const auto &f : fs.get_add_file_formats())
-        if (f == "FILE_ANY")
-            format = f;
-
-    auto r = fs.put_file(uf, format, data, replace);
+    auto r = fs.put_file(uf, add_format(fs), data, replace);
     if (!r)
         return fails_before_change(r) ? op_error(ctx, name, name_error(panel, r, msg(MCannotWrite)))
                                       : op_broken(ctx, name, name_error(panel, r, msg(MCannotWrite)));
@@ -1915,15 +1932,6 @@ extern "C" intptr_t WINAPI ProcessHostFileW(const struct ProcessHostFileInfo * /
 // ProcessCopyKeys), so the plugin takes the key in ProcessPanelInputW and renames the
 // current item itself.
 
-static bool is_shift_f6(const INPUT_RECORD &rec)
-{
-    if (rec.EventType != KEY_EVENT || !rec.Event.KeyEvent.bKeyDown || rec.Event.KeyEvent.wVirtualKeyCode != VK_F6)
-        return false;
-    const DWORD state = rec.Event.KeyEvent.dwControlKeyState;
-    return (state & SHIFT_PRESSED)
-        && !(state & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED | LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED));
-}
-
 // Name of the current panel item, empty if none
 static std::wstring current_item(HANDLE hPanel, intptr_t &idx)
 {
@@ -2035,15 +2043,236 @@ static void rename_item(HANDLE hPanel, PluginPanel &panel)
     update_panel_cursor(hPanel, shown);
 }
 
+// ── Copy in the image (Shift+F5) ───────────────────────────────
+// Like Shift+F6, FAR turns Shift+F5 into F5 on this panel. Here it copies the current
+// item into the same directory of the image under a new name. The source is read into
+// memory first, so a folder copied next to itself never meets its copy.
+
+struct TreeNode
+{
+    dsk_tools::UniversalFile uf;
+    dsk_tools::BYTES         data;      // a file's contents
+    std::vector<TreeNode>    kids;      // a directory's entries
+};
+
+static Outcome read_node(OpContext &ctx, TreeNode &node, const std::wstring &name)
+{
+    auto &fs = *ctx.panel.filesystem;
+    if (!node.uf.is_dir)
+    {
+        auto r = fs.get_file(node.uf, "FILE_BINARY", node.data);
+        return r ? Outcome::Ok : op_error(ctx, name, describe(msg(MCannotReadFile), r));
+    }
+
+    fs.cd(node.uf);
+    dsk_tools::Files files;
+    auto r = list_dir(fs, files);
+    Outcome result = r ? Outcome::Ok : op_error(ctx, name, describe(msg(MCannotReadDirectory), r));
+    auto names = build_wide_names(files);
+    for (size_t i = 0; r && i < files.size(); ++i)
+    {
+        TreeNode kid{ files[i], {}, {} };
+        Outcome o = read_node(ctx, kid, names[i]);
+        if (o == Outcome::Cancelled)
+        {
+            result = o;
+            break;
+        }
+        if (o == Outcome::Skipped)
+            result = o;
+        else
+            node.kids.push_back(std::move(kid));
+    }
+    fs.cd_up();
+    return result;
+}
+
+// The source entry as put_file/mkdir take it for a copy named `name`: marked as coming from
+// this filesystem, so attributes, dates and the CP/M user come from its metadata (CP/M,
+// Sprite OS and Iskra-226 dir() leave uf.fs unset). Under a new name without original_name,
+// from which FAT and RT-11 would take the old one; entries inside a copied folder keep
+// it and so their names byte for byte.
+static dsk_tools::UniversalFile copy_proto(dsk_tools::fileSystem &fs, const dsk_tools::UniversalFile &src,
+                                           const std::wstring &name)
+{
+    dsk_tools::UniversalFile uf = src;
+    uf.fs = fs.get_fs();
+    if (wide_to_utf8(name) != src.name)
+    {
+        uf.name = wide_to_utf8(name);
+        uf.original_name.clear();
+    }
+    return uf;
+}
+
+static Outcome write_node(OpContext &ctx, const TreeNode &node, const std::wstring &name, bool replace);
+
+static Outcome write_kids(OpContext &ctx, const std::vector<TreeNode> &kids)
+{
+    Outcome result = Outcome::Ok;
+    for (const auto &kid : kids)
+    {
+        Outcome o = write_node(ctx, kid, to_wide(kid.uf.name), false);
+        if (o == Outcome::Cancelled)
+            return o;
+        if (o == Outcome::Skipped)
+            result = o;
+    }
+    return result;
+}
+
+// Writes `node` into the current directory as `name`. On DOS 3.3 a file keeps its type only
+// through put_file's native mode (no format, a DOS 3.3 source), which takes the name from
+// the source entry: the copy gets the source's name (copy_item() then renames the source).
+static Outcome write_node(OpContext &ctx, const TreeNode &node, const std::wstring &name, bool replace)
+{
+    auto &panel = ctx.panel;
+    auto &fs = *panel.filesystem;
+    const bool dos33 = fs.get_fs() == dsk_tools::FS::DOS33;
+
+    if (!node.uf.is_dir)
+    {
+        auto r = dos33 ? fs.put_file(node.uf, "", node.data, false)
+                       : fs.put_file(copy_proto(fs, node.uf, name), add_format(fs), node.data, replace);
+        if (!r)
+            return fails_before_change(r) ? op_error(ctx, name, name_error(panel, r, msg(MCannotWrite)))
+                                          : op_broken(ctx, name, name_error(panel, r, msg(MCannotWrite)));
+        ctx.changed = true;
+        return Outcome::Ok;
+    }
+
+    // DOS 3.3 mkdir in native mode takes a wrong name from the metadata: give it a plain one
+    dsk_tools::UniversalFile proto = copy_proto(fs, node.uf, name), created, dir;
+    if (dos33)
+    {
+        proto = dsk_tools::UniversalFile{};
+        proto.fs   = dsk_tools::FS::None;
+        proto.name = wide_to_utf8(name);
+    }
+    auto r = fs.mkdir(proto, created);
+    if (!r)
+        return fails_before_change(r) ? op_error(ctx, name, name_error(panel, r, msg(MCannotCreateDir)))
+                                      : op_broken(ctx, name, name_error(panel, r, msg(MCannotCreateDir)));
+    ctx.changed = true;
+    if (!find_entry(panel, name, dir))
+        return op_broken(ctx, name, msg(MCannotFindNewDir));
+    fs.cd(dir);
+    Outcome o = write_kids(ctx, node.kids);
+    fs.cd_up();
+    return o;
+}
+
+static void copy_item(HANDLE hPanel, PluginPanel &panel)
+{
+    intptr_t idx = -1;
+    std::wstring oldName = current_item(hPanel, idx);
+    if (oldName.empty() || oldName == L".." || idx < 0 || static_cast<size_t>(idx) >= panel.files.size()
+        || panel.wideNames[idx] != oldName)
+        return;
+    const dsk_tools::UniversalFile uf = panel.files[idx];
+    auto &fs = *panel.filesystem;
+    const bool dos33 = fs.get_fs() == dsk_tools::FS::DOS33;
+
+    if (uf.is_dir && panel.cpmUsers)
+    {
+        show_error(msg(MCopyArea));
+        return;
+    }
+    if (!check_writable(panel, true, uf.is_dir ? dsk_tools::FSCaps::MkDir : dsk_tools::FSCaps::Add,
+                        uf.is_dir ? MOpDirectories : MOpAdding))
+        return;
+
+    static const UUID PluginUuid = PLUGIN_UUID;
+    wchar_t buf[256] = {};
+    if (!PSI.InputBox(&PluginUuid, nullptr, msg(MCopyTitle), msg(MCopyTo, { L"\"" + oldName + L"\"" }).c_str(),
+                      L"DskTools.Copy", oldName.c_str(), buf, ARRAYSIZE(buf),
+                      nullptr, FIB_BUTTONS | FIB_NOUSELASTHISTORY))
+        return;
+    std::wstring name = buf;
+    auto first = name.find_first_not_of(L' ');
+    auto last  = name.find_last_not_of(L' ');
+    name = (first == std::wstring::npos) ? L"" : name.substr(first, last - first + 1);
+    if (name.empty())
+        return;
+
+    OpContext ctx{ panel, true, true, msg(MCannotCopy) };
+    if (name == oldName || _wcsicmp(name.c_str(), to_wide(uf.name).c_str()) == 0)
+    {
+        show_error(std::wstring(ctx.action) + L"\n" + oldName + L"\n" + msg(MCopySelf));
+        return;
+    }
+    if (dos33 && name.size() > 30)
+    {
+        show_error(std::wstring(ctx.action) + L"\n" + name + L"\n" + msg(MInvalidName, { fs_name(dsk_tools::FS::DOS33) }));
+        return;
+    }
+
+    TreeNode node{ uf, {}, {} };
+    Outcome o = read_node(ctx, node, oldName);
+    if (o == Outcome::Cancelled || (o == Outcome::Skipped && !uf.is_dir))
+        return;
+
+    bool replace = false;
+    dsk_tools::UniversalFile existing;
+    if (uf.is_dir)
+        o = find_entry(panel, name, existing)
+          ? op_error(ctx, name, msg(existing.is_dir ? MDirExists : MFileWithNameExists))
+          : Outcome::Ok;
+    else
+        o = make_room(ctx, name, replace);
+    if (o == Outcome::Ok)
+        o = write_node(ctx, node, name, replace);
+
+    // DOS 3.3: the copy has the old name, so the source takes the new one
+    if (o == Outcome::Ok && dos33 && !uf.is_dir)
+    {
+        auto r = fs.rename_file(uf, wide_to_utf8(name));
+        if (!r)
+            op_broken(ctx, name, error_text(r));
+    }
+
+    if (ctx.broken)
+    {
+        discard_changes(panel, true);
+        update_panel_cursor(hPanel, oldName);
+        return;
+    }
+    if (!ctx.changed)
+        return;
+    if (!commit_changes(panel, true))
+    {
+        update_panel_cursor(hPanel, oldName);
+        return;
+    }
+    std::wstring shown = name;
+    for (const auto &n : panel.wideNames)
+        if (_wcsicmp(n.c_str(), name.c_str()) == 0)
+            shown = n;
+    update_panel_cursor(hPanel, shown);
+}
+
+static bool is_shift_key(const INPUT_RECORD &rec, WORD key)
+{
+    if (rec.EventType != KEY_EVENT || !rec.Event.KeyEvent.bKeyDown || rec.Event.KeyEvent.wVirtualKeyCode != key)
+        return false;
+    const DWORD state = rec.Event.KeyEvent.dwControlKeyState;
+    return (state & SHIFT_PRESSED)
+        && !(state & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED | LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED));
+}
+
 extern "C" intptr_t WINAPI ProcessPanelInputW(const struct ProcessPanelInputInfo *Info)
 {
-    if (!is_shift_f6(Info->Rec))
+    const bool rename = is_shift_key(Info->Rec, VK_F6);
+    if (!rename && !is_shift_key(Info->Rec, VK_F5))
         return FALSE;
     auto it = g_Panels.find(reinterpret_cast<intptr_t>(Info->hPanel));
     if (it == g_Panels.end())
         return FALSE;
-    rename_item(Info->hPanel, it->second);
-    return TRUE;    // never let FAR turn it into F6
+    if (rename)
+        rename_item(Info->hPanel, it->second);
+    else
+        copy_item(Info->hPanel, it->second);
+    return TRUE;    // never let FAR turn it into F5/F6
 }
 
 extern "C" void WINAPI ClosePanelW(const struct ClosePanelInfo *Info)

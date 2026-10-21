@@ -152,3 +152,9 @@
 "CP/M user areas cannot be renamed"
 //[MKeyBarMove]
 "Move"
+//[MCannotCopy]
+"Cannot copy"
+//[MCopySelf]
+"Cannot copy a file onto itself"
+//[MCopyArea]
+"CP/M user areas cannot be copied within the image"
