@@ -1,5 +1,6 @@
 #pragma once
 
+#include <deque>
 #include <string>
 #include <vector>
 #include <memory>
@@ -29,6 +30,12 @@ struct PluginPanel
     unsigned                                      cpmUser  = 0;     // area shown in the panel
     dsk_tools::Files                              cpmAll;           // all areas, from dir()
     std::set<unsigned>                            cpmNewAreas;      // empty areas created by F7
+
+    // Information panel (Ctrl+L), built after the image is loaded or saved
+    bool                                          infoValid = false;
+    std::deque<std::wstring>                      infoTexts;        // what infoLines point to
+    std::vector<InfoPanelLine>                    infoLines;
+    unsigned long long                            freeSize  = 0;    // OpenPanelInfo::FreeSize
 };
 
 // ── Plugin globals ─────────────────────────────────────────────

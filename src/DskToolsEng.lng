@@ -164,3 +164,522 @@
 "Set &read-only attribute on protected files"
 //[MCopyFlatAreas]
 "Put all user areas into &one folder"
+//[MInfoImage]
+"Disk image"
+//[MInfoFile]
+"File"
+//[MInfoFormat]
+"Format"
+//[MInfoType]
+"Type"
+//[MInfoFilesystem]
+"Filesystem"
+//[MInfoVolume]
+"Volume"
+//[MInfoWrite]
+"Writing"
+//[MInfoWritable]
+"allowed"
+//[MInfoSpace]
+"Space"
+//[MInfoTotal]
+"Total"
+//[MInfoUsed]
+"Used"
+//[MInfoFree]
+"Free"
+
+// {$TOKEN} placeholders of fileSystem::information(): texts of DISK Commander
+// (https://github.com/Ptr314/dsk_commander, src/placeholders.h, src/i18n/ru_ru.ts)
+//[MTok_AGAT_FONT_A7_CLASSIC]
+"Agat-7 classic font"
+//[MTok_AGAT_FONT_A7_ENCHANCED]
+"Agat-7 enhanced font"
+//[MTok_AGAT_FONT_A9_CLASSIC]
+"Agat-9 classic font"
+//[MTok_AGAT_FONT_CUSTOM_LOADED]
+"Loaded custom font"
+//[MTok_AGAT_VR_A2_MODES]
+"Apple II modes"
+//[MTok_AGAT_VR_AGAT_GMODES]
+"Agat graphic"
+//[MTok_AGAT_VR_AGAT_TMODES]
+"Agat text"
+//[MTok_AGAT_VR_ATL_PALETTE]
+"Alternative palette"
+//[MTok_AGAT_VR_COMMENT]
+"Comment block"
+//[MTok_AGAT_VR_CUSTOM_FONT]
+"Custom font"
+//[MTok_AGAT_VR_CUSTOM_PALETTE]
+"Custom palette"
+//[MTok_AGAT_VR_FONT]
+"Font ID"
+//[MTok_AGAT_VR_FOUND]
+"Agat image VR block found"
+//[MTok_AGAT_VR_GIGA_MODES]
+"Agat GigaScreen"
+//[MTok_AGAT_VR_MAIN_PALETTE]
+"Main palette"
+//[MTok_AGAT_VR_MODE]
+"Video mode"
+//[MTok_ATTRIBUTES]
+"Attributes"
+//[MTok_BAD_SECTOR_IN_DIRECTORY]
+"Bad sector in directory"
+//[MTok_BAD_SECTOR_IN_RESERVED]
+"Bad sector in reserved track"
+//[MTok_BW]
+"b/w"
+//[MTok_BYTES]
+"byte(s)"
+//[MTok_COLOR]
+"Color"
+//[MTok_COMMENT]
+"Comment"
+//[MTok_CPM_BLOCK]
+"Block"
+//[MTok_CPM_BLOCK_SIZE]
+"Block size"
+//[MTok_CPM_DIR_ENTRIES]
+"Directory entries"
+//[MTok_CPM_RESERVED_TRACKS]
+"Reserved tracks"
+//[MTok_CPM_SECTORS]
+"Sectors"
+//[MTok_CPM_SECTORS_PER_BLOCK]
+"Sectors per block"
+//[MTok_CPM_SECTORS_PER_TRACK]
+"Sectors per track"
+//[MTok_CPM_SECTOR_SIZE]
+"Sector size"
+//[MTok_CPM_TOTAL_BLOCKS]
+"Total blocks"
+//[MTok_CRC_EXPECTED]
+"Expected"
+//[MTok_CRC_FOUND]
+"Found"
+//[MTok_CUSTOM_DATA]
+"Custom Data"
+//[MTok_CUSTOM_PALETTE]
+"Custom palette"
+//[MTok_CYLINDERS_MAP]
+"Cylinder map"
+//[MTok_DATA_COMPRESSED]
+"Compressed"
+//[MTok_DATA_DELETED]
+"Deleted"
+//[MTok_DATA_EPILOGUE_ERROR]
+"Epilogue: Error"
+//[MTok_DATA_EPILOGUE_OK]
+"Epilogue: OK"
+//[MTok_DATA_FIELD]
+"Sector Data"
+//[MTok_DATA_MARK]
+"Data Mark"
+//[MTok_DATE]
+"Date"
+//[MTok_DIRECTORY_ENTRY]
+"Directory Entry"
+//[MTok_DISK_HAS_BAD_SECTORS]
+"The disk contains bad sectors!"
+//[MTok_DPB_DSIDE]
+"DSIDE"
+//[MTok_DPB_DSIZE]
+"Tracks on disk"
+//[MTok_DPB_INFO]
+"DPB Information"
+//[MTok_DPB_MAXBLOK]
+"Last block"
+//[MTok_DPB_TSIZE]
+"Blocks on track"
+//[MTok_DPB_TYPE]
+"Device type"
+//[MTok_DPB_VOLUME_ID]
+"Volume ID"
+//[MTok_DPB_VTOCADR]
+"VTOC block"
+//[MTok_ERROR_LOADING]
+"Error loading, check if the file type is correct"
+//[MTok_ERROR_OPENING]
+"Error opening the file"
+//[MTok_ERROR_PARSING]
+"File parsing error"
+//[MTok_EXTENT]
+"Extent"
+//[MTok_FAT_BAD_CLUSTERS]
+"Bad clusters"
+//[MTok_FAT_BPB_GEOMETRY]
+"BPB geometry"
+//[MTok_FAT_BYTES_PER_SECTOR]
+"Bytes per sector"
+//[MTok_FAT_CLUSTERS]
+"Cluster usage"
+//[MTok_FAT_CLUSTER_SIZE]
+"Cluster size"
+//[MTok_FAT_DATA_START]
+"Data region start LBA"
+//[MTok_FAT_FAT_START]
+"FAT start LBA"
+//[MTok_FAT_FREE_CLUSTERS]
+"Free clusters"
+//[MTok_FAT_FS_TYPE]
+"Filesystem type"
+//[MTok_FAT_HIDDEN_SECTORS]
+"Hidden sectors"
+//[MTok_FAT_LAYOUT]
+"Volume layout"
+//[MTok_FAT_MEDIA_DESCRIPTOR]
+"Media descriptor"
+//[MTok_FAT_NUM_FATS]
+"Number of FATs"
+//[MTok_FAT_NUM_HEADS]
+"Number of heads"
+//[MTok_FAT_OEM_NAME]
+"OEM name"
+//[MTok_FAT_REGIONS_LBA]
+"Region LBAs"
+//[MTok_FAT_RESERVED_SECTORS]
+"Reserved sectors"
+//[MTok_FAT_ROOT_DIR_SECTORS]
+"Root directory sectors"
+//[MTok_FAT_ROOT_DIR_START]
+"Root directory start LBA"
+//[MTok_FAT_ROOT_ENTRIES]
+"Root directory entries"
+//[MTok_FAT_SECTORS_PER_CLUSTER]
+"Sectors per cluster"
+//[MTok_FAT_SECTORS_PER_FAT]
+"Sectors per FAT"
+//[MTok_FAT_SECTORS_PER_TRACK]
+"Sectors per track (FAT)"
+//[MTok_FAT_TOTAL_CLUSTERS]
+"Total clusters"
+//[MTok_FAT_TOTAL_SECTORS]
+"Total sectors"
+//[MTok_FAT_USED_CLUSTERS]
+"Used clusters"
+//[MTok_FILE_DELETED]
+"The file is marked as deleted, the data below may be incorrect"
+//[MTok_FILE_END_REACHED]
+"File End Reached"
+//[MTok_FILE_HAS_BAD_SECTORS]
+"File has bad sectors"
+//[MTok_FILE_HAS_ERRORS]
+"The file contains corrupted data!"
+//[MTok_FILE_HAS_NO_ERRORS]
+"The file was read without errors."
+//[MTok_FILE_NAME]
+"File Name"
+//[MTok_FONT_A7]
+"Agat-7 Font"
+//[MTok_FONT_A9]
+"Agat-9 Font"
+//[MTok_FONT_FILE]
+"Font file"
+//[MTok_FONT_FILE_BFT]
+"BFT Font"
+//[MTok_FONT_LOADING_ERROR]
+"Custom font loading error"
+//[MTok_FORMAT_REVISION]
+"Format revision"
+//[MTok_FREE_BYTES]
+"Free bytes"
+//[MTok_FREE_SECTORS]
+"Free sectors"
+//[MTok_HEADER]
+"Header"
+//[MTok_HEAD_MAP]
+"Head map"
+//[MTok_INCORRECT_TS_DATA]
+"Incorrect T/S data, stopping iterations"
+//[MTok_INDEX_CRC_ERROR]
+"CRC: Error"
+//[MTok_INDEX_CRC_OK]
+"CRC: OK"
+//[MTok_INDEX_EPILOGUE_ERROR]
+"Epilogue: Error"
+//[MTok_INDEX_EPILOGUE_OK]
+"Epilogue: OK"
+//[MTok_INDEX_MARK]
+"Index Mark"
+//[MTok_LOGICAL_SECTOR]
+"S"
+//[MTok_META_CPM_ARCHIVE]
+"Archive"
+//[MTok_META_CPM_SYSTEM]
+"System"
+//[MTok_META_CPM_USER]
+"User number"
+//[MTok_META_DATE]
+"Date (DD.MM.YYYY)"
+//[MTok_META_EXTENDED]
+"Extended"
+//[MTok_META_FILENAME]
+"File Name"
+//[MTok_META_HIDDEN]
+"Hidden"
+//[MTok_META_PROTECTED]
+"Protected"
+//[MTok_META_TYPE]
+"Type"
+//[MTok_MONOCHROME]
+"Monochrome"
+//[MTok_NEXT_TS]
+"Next T/S List Location"
+//[MTok_NO]
+"No"
+//[MTok_NORMAL_DATA]
+"Normal data"
+//[MTok_NORMAL_DATA_WITH_ERROR]
+"DATA ERROR"
+//[MTok_NO_BAD_SECTORS_IN_DIRECTORY]
+"No bad sectors in directory"
+//[MTok_NO_BAD_SECTORS_IN_RESERVED]
+"No bad sectors in reserved tracks"
+//[MTok_NO_DATA_FIELD]
+"No data field after the ID"
+//[MTok_NO_DATE]
+"no date"
+//[MTok_NO_FILES_WITH_BAD_SECTORS]
+"No files with bad sectors"
+//[MTok_NO_SIGNATURE]
+"No known signature found, aborting"
+//[MTok_NTSC_APPLE_IMPROVED]
+"Apple Improved"
+//[MTok_NTSC_APPLE_ORIGINAL]
+"Apple NTSC Original"
+//[MTok_ONIX_ALLOCATION_TABLE]
+"Allocation table"
+//[MTok_ONIX_ATTRIBUTES]
+"Attributes"
+//[MTok_ONIX_BLOCK_SIZE]
+"Block size"
+//[MTok_ONIX_DATE]
+"Date"
+//[MTok_ONIX_DESCRIBED_BLOCKS]
+"Blocks in the allocation table"
+//[MTok_ONIX_DIRECTORY]
+"Directory"
+//[MTok_ONIX_DISK_BLOCKS]
+"Blocks on the disk"
+//[MTok_ONIX_ENTRIES_PER_BLOCK]
+"Directory entries per block"
+//[MTok_ONIX_ENTRY_LENGTH]
+"Directory entry length"
+//[MTok_ONIX_EXEC_ADDRESS]
+"Execution address"
+//[MTok_ONIX_FILE_BLOCKS]
+"File blocks"
+//[MTok_ONIX_FIRST_BLOCK]
+"First block"
+//[MTok_ONIX_FREE_BLOCKS]
+"Free blocks"
+//[MTok_ONIX_LAYOUT]
+"Volume layout"
+//[MTok_ONIX_LOAD_ADDRESS]
+"Load address"
+//[MTok_ONIX_ROOT_BLOCK]
+"Root directory block"
+//[MTok_ONIX_SYSTEM_BLOCKS]
+"System blocks"
+//[MTok_ONIX_TABLE_BLOCKS]
+"Table blocks"
+//[MTok_ONIX_TABLE_FIRST_BLOCK]
+"Table first block"
+//[MTok_ONIX_USED_BLOCKS]
+"Used blocks"
+//[MTok_PALETTE]
+"Palette"
+//[MTok_PARSING_FINISHED]
+"Parsing finished"
+//[MTok_PRODOS_ACCESS]
+"Access"
+//[MTok_PRODOS_AUX_TYPE]
+"Auxiliary type"
+//[MTok_PRODOS_BITMAP_POINTER]
+"Bitmap first block"
+//[MTok_PRODOS_BLOCKS_USED]
+"Blocks used"
+//[MTok_PRODOS_BLOCK_SIZE]
+"Block size"
+//[MTok_PRODOS_CREATED]
+"Created"
+//[MTok_PRODOS_DIRECTORY]
+"Volume directory"
+//[MTok_PRODOS_ENTRIES_PER_BLOCK]
+"Directory entries per block"
+//[MTok_PRODOS_ENTRY_LENGTH]
+"Directory entry length"
+//[MTok_PRODOS_FILE_BLOCKS]
+"File blocks"
+//[MTok_PRODOS_FILE_COUNT]
+"Files in the root directory"
+//[MTok_PRODOS_FREE_BLOCKS]
+"Free blocks"
+//[MTok_PRODOS_KEY_POINTER]
+"Key block"
+//[MTok_PRODOS_LAYOUT]
+"Volume layout"
+//[MTok_PRODOS_MIN_VERSION]
+"Minimum version"
+//[MTok_PRODOS_MODIFIED]
+"Last modified"
+//[MTok_PRODOS_STORAGE_TYPE]
+"Storage type"
+//[MTok_PRODOS_TOTAL_BLOCKS]
+"Total blocks"
+//[MTok_PRODOS_USED_BLOCKS]
+"Used blocks"
+//[MTok_PRODOS_VERSION]
+"Version"
+//[MTok_PRODOS_VOLUME_NAME]
+"Volume name"
+//[MTok_PROTECTED]
+"Protected"
+//[MTok_RT11_BLOCKS]
+"Blocks"
+//[MTok_RT11_CLUSTER_SIZE]
+"Pack cluster size"
+//[MTok_RT11_DATA_START]
+"First data block"
+//[MTok_RT11_DATE]
+"Date"
+//[MTok_RT11_DIRECTORY]
+"Directory"
+//[MTok_RT11_DIR_BLOCK]
+"First directory block"
+//[MTok_RT11_DISK_BLOCKS]
+"Blocks in the image"
+//[MTok_RT11_ENTRY]
+"entry"
+//[MTok_RT11_EXTRA_BYTES]
+"Extra bytes per entry"
+//[MTok_RT11_FILES]
+"Files"
+//[MTok_RT11_FIRST_BLOCK]
+"First block"
+//[MTok_RT11_FREE_BLOCKS]
+"Free blocks"
+//[MTok_RT11_HOME_BLOCK]
+"Home block"
+//[MTok_RT11_JOB]
+"Job and channel"
+//[MTok_RT11_LENGTH]
+"Length in blocks"
+//[MTok_RT11_OWNER]
+"Owner"
+//[MTok_RT11_SEGMENT]
+"Directory segment"
+//[MTok_RT11_SEGMENTS]
+"Directory segments"
+//[MTok_RT11_SEGMENTS_USED]
+"Segments in use"
+//[MTok_RT11_STATUS]
+"Status"
+//[MTok_RT11_SYSTEM_ID]
+"System ID"
+//[MTok_RT11_USED_BLOCKS]
+"Used blocks"
+//[MTok_RT11_VERSION]
+"System version"
+//[MTok_RT11_VOLUME_BLOCKS]
+"Blocks described by the directory"
+//[MTok_RT11_VOLUME_ID]
+"Volume ID"
+//[MTok_SECTORS]
+"sector(s)"
+//[MTok_SECTORS_MAP]
+"Sector map"
+//[MTok_SECTOR_CRC_ERROR]
+"CRC: Error"
+//[MTok_SECTOR_CRC_OK]
+"CRC: OK"
+//[MTok_SECTOR_ERROR]
+"Data Error"
+//[MTok_SECTOR_INDEX]
+"Index"
+//[MTok_SECTOR_INDEX_END_ERROR]
+"End Mark: Not Detected"
+//[MTok_SECTOR_INDEX_END_OK]
+"End Mark: OK"
+//[MTok_SECTOR_UNAVAILABLE]
+"Unavailable sector"
+//[MTok_SELECTOR_AGAT_FONT]
+"Font"
+//[MTok_SELECTOR_AGAT_FONT_TYPE]
+"Font type"
+//[MTok_SELECTOR_AGAT_INFO]
+"Comment"
+//[MTok_SELECTOR_AGAT_PALETTE]
+"Palette"
+//[MTok_SELECTOR_APPLE_HIRES_AGAT]
+"Agat color mode"
+//[MTok_SELECTOR_APPLE_HIRES_APPLE]
+"Apple color mode"
+//[MTok_SIDE]
+"Side"
+//[MTok_SIDES]
+"Sides"
+//[MTok_SIDE_SHORT]
+"H"
+//[MTok_SIGNATURE]
+"Signature"
+//[MTok_SIZE]
+"File Size"
+//[MTok_SIZE_CODE_SHORT]
+"N"
+//[MTok_TRACK]
+"Track"
+//[MTok_TRACKLIST_OFFSET]
+"Track List Offset"
+//[MTok_TRACKS]
+"Tracks"
+//[MTok_TRACK_LAYOUT]
+"Track layout"
+//[MTok_TRACK_OFFSET]
+"Track Offset"
+//[MTok_TRACK_SHORT]
+"T"
+//[MTok_TRACK_SIZE]
+"Track Size"
+//[MTok_TS_LIST_DATA]
+"T/S List Contents"
+//[MTok_TS_LIST_LOCATION]
+"T/S List Location"
+//[MTok_TYPE]
+"Type"
+//[MTok_UNEXPECTED_END_OF_FILE]
+"Error: Unexpected end of file"
+//[MTok_UNKNOWN_DATA_MARKER]
+"Unknown data marker"
+//[MTok_VOLUME_ID]
+"V"
+//[MTok_VTOC_BYTES_PER_SECTOR]
+"Bytes per sector"
+//[MTok_VTOC_CATALOG_SECTOR]
+"Root Catalog Sector"
+//[MTok_VTOC_CATALOG_TRACK]
+"Root Catalog Track"
+//[MTok_VTOC_DIRECTION]
+"Direction"
+//[MTok_VTOC_DOS_RELEASE]
+"DOS Release"
+//[MTok_VTOC_FOUND]
+"DOS 3.3 VTOC found"
+//[MTok_VTOC_LAST_TRACK]
+"Last track"
+//[MTok_VTOC_NOT_FOUND]
+"DOS 3.3 VTOC not found"
+//[MTok_VTOC_PAIRS_ON_SECTOR]
+"Pairs per T/S list"
+//[MTok_VTOC_SECTORS_ON_TRACK]
+"Sectors on track"
+//[MTok_VTOC_TRACKS_TOTAL]
+"Tracks total"
+//[MTok_VTOC_VOLUME_ID]
+"Volume ID"
+//[MTok_VTOC_VOLUME_NAME]
+"Volume name"
+//[MTok_YES]
+"Yes"

@@ -1,5 +1,6 @@
 #include "plugin.hpp"
 #include "lang.hpp"
+#include "info_tokens.hpp"
 #include "uuid.hpp"
 #include "version.hpp"
 #include "diskdefs_embed.h"
@@ -520,6 +521,7 @@ static std::wstring mount_image(PluginPanel &panel)
     panel.filesystem = std::move(fs);
     panel.dirStack.clear();
     panel.cpmUser    = 0;
+    panel.infoValid  = false;
     return L"";
 }
 
@@ -753,6 +755,128 @@ extern "C" HANDLE WINAPI OpenW(const struct OpenInfo *Info)
     return open_image(di, false);
 }
 
+// ── Information panel (Ctrl+L) ─────────────────────────────────
+
+// A dsk_tools text with its {$TOKEN} placeholders replaced by their labels (info_tokens.hpp);
+// a token not there is shown by its name: PRODOS_DATA_FORK -> "Prodos data fork"
+static std::wstring replace_tokens(const std::string &text)
+{
+    std::wstring out;
+    size_t pos = 0;
+    for (;;)
+    {
+        size_t open  = text.find("{$", pos);
+        size_t close = open == std::string::npos ? open : text.find('}', open);
+        if (close == std::string::npos)
+            return out + to_wide(text.substr(pos));
+        out += to_wide(text.substr(pos, open - pos));
+        const std::string token = text.substr(open + 2, close - open - 2);
+        const InfoToken *known = nullptr;
+        for (const auto &t : INFO_TOKENS)
+            if (token == t.token)
+                known = &t;
+        if (known)
+            out += msg(known->id);
+        else
+        {
+            std::wstring name = to_wide(token);
+            for (auto &c : name)
+                c = c == L'_' ? L' ' : static_cast<wchar_t>(towlower(c));
+            if (!name.empty())
+                name[0] = static_cast<wchar_t>(towupper(name[0]));
+            out += name;
+        }
+        pos = close + 1;
+    }
+}
+
+static std::wstring format_size(unsigned long long size)
+{
+    wchar_t buf[64] = {};
+    FSF.FormatFileSize(size, 0, FFFS_COMMAS, buf, ARRAYSIZE(buf));
+    return buf;
+}
+
+// Info panel lines: the image (file, format, type, filesystem, why it is read-only), the
+// space from get_stats() and the filesystem's own information(), whose lines are
+// "Label: value", "Group:" (a separator here) or plain text
+static void build_info(PluginPanel &panel)
+{
+    struct Row { std::wstring text, data; bool separator; };
+    std::vector<Row> rows;
+    auto add = [&](const std::wstring &text, const std::wstring &data) { rows.push_back({ text, data, false }); };
+    auto group = [&](const std::wstring &text) { rows.push_back({ text, L"", true }); };
+    auto strip = [](const std::string &id, const char *prefix)
+    {
+        return to_wide(id.compare(0, strlen(prefix), prefix) == 0 ? id.substr(strlen(prefix)) : id);
+    };
+    auto &fs = *panel.filesystem;
+
+    group(msg(MInfoImage));
+    add(msg(MInfoFile), extract_filename(panel.hostPath));
+    add(msg(MInfoFormat), strip(panel.formatId, "FILE_"));
+    add(msg(MInfoType), strip(panel.typeId, "TYPE_"));
+    add(msg(MInfoFilesystem), fs_name(fs.get_fs()));
+    if (fs.get_volume_id() >= 0)
+        add(msg(MInfoVolume), std::to_wstring(fs.get_volume_id()));
+    std::wstring readOnly = read_only_reason(panel);
+    add(msg(MInfoWrite), readOnly.empty() ? std::wstring(msg(MInfoWritable)) : readOnly);
+
+    auto stats = fs.get_stats().int_values;
+    panel.freeSize = 0;
+    if (stats["total_space"] > 0)
+    {
+        group(msg(MInfoSpace));
+        add(msg(MInfoTotal), format_size(stats["total_space"]));
+        add(msg(MInfoUsed),  format_size(stats["occupied_space"]));
+        add(msg(MInfoFree),  format_size(stats["free_space"]));
+        panel.freeSize = stats["free_space"];
+    }
+
+    std::string info = fs.information();
+    if (!info.empty() && info != "Not implemented")
+    {
+        group(fs_name(fs.get_fs()));
+        size_t start = 0;
+        while (start < info.size())
+        {
+            size_t end = info.find('\n', start);
+            if (end == std::string::npos) end = info.size();
+            std::string line = info.substr(start, end - start);
+            start = end + 1;
+
+            while (!line.empty() && line.back() == '\r') line.pop_back();
+            size_t first = line.find_first_not_of(' ');
+            if (first == std::string::npos)
+                continue;
+            line = line.substr(first);
+            size_t colon = line.find(": ");
+            if (colon != std::string::npos)
+            {
+                std::string value = line.substr(colon + 2);
+                while (!value.empty() && value.back() == ' ') value.pop_back();
+                add(replace_tokens(line.substr(0, colon)), replace_tokens(value));
+            }
+            else if (line.back() == ':')
+                group(replace_tokens(line.substr(0, line.size() - 1)));
+            else
+                add(replace_tokens(line), L"");
+        }
+    }
+
+    panel.infoTexts.clear();
+    panel.infoLines.clear();
+    for (const auto &r : rows)
+    {
+        panel.infoTexts.push_back(r.text);
+        const wchar_t *text = panel.infoTexts.back().c_str();
+        panel.infoTexts.push_back(r.data);
+        const wchar_t *data = panel.infoTexts.back().c_str();
+        panel.infoLines.push_back({ text, data, r.separator ? IPLFLAGS_SEPARATOR : IPLFLAGS_NONE });
+    }
+    panel.infoValid = true;
+}
+
 // Does the filesystem have file types to show in the "Type" column?
 static bool has_types(PluginPanel &panel)
 {
@@ -773,8 +897,10 @@ extern "C" void WINAPI GetOpenPanelInfoW(struct OpenPanelInfo *Info)
     Info->CurDir           = it->second.currentDir == L"/" ? L"" : it->second.currentDir.c_str();
     Info->Format           = title.c_str();
     Info->PanelTitle       = title.c_str();
-    Info->InfoLines        = nullptr;
-    Info->InfoLinesNumber  = 0;
+    if (!it->second.infoValid)
+        build_info(it->second);
+    Info->InfoLines        = it->second.infoLines.data();
+    Info->InfoLinesNumber  = it->second.infoLines.size();
     Info->DescrFiles       = nullptr;
     Info->DescrFilesNumber = 0;
     // Filesystems with file types (FSCaps::Types: DOS 3.3 B/A/T, ProDOS BIN/BAS, CP/M and FAT
@@ -800,7 +926,7 @@ extern "C" void WINAPI GetOpenPanelInfoW(struct OpenPanelInfo *Info)
     keyBarLabels[0].Text = keyBarLabels[0].LongText = msg(MKeyBarMove);
     Info->KeyBar           = &keyBar;
     Info->ShortcutData     = nullptr;
-    Info->FreeSize         = 0;
+    Info->FreeSize         = it->second.freeSize;
     Info->UserData         = { nullptr, nullptr };
     Info->Instance         = nullptr;
 }
@@ -1182,6 +1308,7 @@ static std::wstring save_image(PluginPanel &panel)
         return panel.hostPath + L"\n" + last_error_text(err);
     }
     panel.filesystem->reset_changed();
+    panel.infoValid = false;    // free space, file count
     return L"";
 }
 

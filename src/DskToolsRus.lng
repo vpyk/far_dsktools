@@ -164,3 +164,522 @@
 "&Защищённым файлам — атрибут «Только чтение»"
 //[MCopyFlatAreas]
 "Все области пользователя — в о&дну папку"
+//[MInfoImage]
+"Образ диска"
+//[MInfoFile]
+"Файл"
+//[MInfoFormat]
+"Формат"
+//[MInfoType]
+"Тип"
+//[MInfoFilesystem]
+"Файловая система"
+//[MInfoVolume]
+"Том"
+//[MInfoWrite]
+"Запись"
+//[MInfoWritable]
+"разрешена"
+//[MInfoSpace]
+"Место"
+//[MInfoTotal]
+"Всего"
+//[MInfoUsed]
+"Занято"
+//[MInfoFree]
+"Свободно"
+
+// {$TOKEN} placeholders of fileSystem::information(): texts of DISK Commander
+// (https://github.com/Ptr314/dsk_commander, src/placeholders.h, src/i18n/ru_ru.ts)
+//[MTok_AGAT_FONT_A7_CLASSIC]
+"ZG7 : Classic"
+//[MTok_AGAT_FONT_A7_ENCHANCED]
+"ZG7: 256"
+//[MTok_AGAT_FONT_A9_CLASSIC]
+"ZG9 : Classic"
+//[MTok_AGAT_FONT_CUSTOM_LOADED]
+"Загружаемый шрифт"
+//[MTok_AGAT_VR_A2_MODES]
+"Режимы Apple II"
+//[MTok_AGAT_VR_AGAT_GMODES]
+"Графика Агат"
+//[MTok_AGAT_VR_AGAT_TMODES]
+"Текст Агат"
+//[MTok_AGAT_VR_ATL_PALETTE]
+"Дополнительная палитра"
+//[MTok_AGAT_VR_COMMENT]
+"Комментарий"
+//[MTok_AGAT_VR_CUSTOM_FONT]
+"Загружаемый шрифт"
+//[MTok_AGAT_VR_CUSTOM_PALETTE]
+"Загружаемая палитра"
+//[MTok_AGAT_VR_FONT]
+"Знакогенератор"
+//[MTok_AGAT_VR_FOUND]
+"Найден VR-блок изображений Агат"
+//[MTok_AGAT_VR_GIGA_MODES]
+"Агат GigaScreen"
+//[MTok_AGAT_VR_MAIN_PALETTE]
+"Основная палитра"
+//[MTok_AGAT_VR_MODE]
+"Режим экрана"
+//[MTok_ATTRIBUTES]
+"Атрибуты"
+//[MTok_BAD_SECTOR_IN_DIRECTORY]
+"Каталог содержит повреждённые сектора"
+//[MTok_BAD_SECTOR_IN_RESERVED]
+"Область загрузки содержит повреждённые сектора"
+//[MTok_BW]
+"Чёрно-белый"
+//[MTok_BYTES]
+"байт(ов)"
+//[MTok_COLOR]
+"Цветной"
+//[MTok_COMMENT]
+"Комментарий"
+//[MTok_CPM_BLOCK]
+"Блок"
+//[MTok_CPM_BLOCK_SIZE]
+"Размер блока"
+//[MTok_CPM_DIR_ENTRIES]
+"Размер каталога"
+//[MTok_CPM_RESERVED_TRACKS]
+"Системные дорожки"
+//[MTok_CPM_SECTORS]
+"Секторы"
+//[MTok_CPM_SECTORS_PER_BLOCK]
+"Секторов в блоке"
+//[MTok_CPM_SECTORS_PER_TRACK]
+"Секторов CP/M (128) на дорожке"
+//[MTok_CPM_SECTOR_SIZE]
+"Размер сектора"
+//[MTok_CPM_TOTAL_BLOCKS]
+"Всего блоков"
+//[MTok_CRC_EXPECTED]
+"Ожидание"
+//[MTok_CRC_FOUND]
+"Прочитано"
+//[MTok_CUSTOM_DATA]
+"Расширенные атрибуты файла"
+//[MTok_CUSTOM_PALETTE]
+"Загружаемая палитра"
+//[MTok_CYLINDERS_MAP]
+"Таблица дорожек"
+//[MTok_DATA_COMPRESSED]
+"Сжатый"
+//[MTok_DATA_DELETED]
+"Удалённый"
+//[MTok_DATA_EPILOGUE_ERROR]
+"Эпилог: Ошибка"
+//[MTok_DATA_EPILOGUE_OK]
+"Эпилог: ОК"
+//[MTok_DATA_FIELD]
+"Данные сектора"
+//[MTok_DATA_MARK]
+"Метка данных"
+//[MTok_DATE]
+"Дата"
+//[MTok_DIRECTORY_ENTRY]
+"Элемент каталога"
+//[MTok_DISK_HAS_BAD_SECTORS]
+"На диске есть повреждённые сектора!"
+//[MTok_DPB_DSIDE]
+"DSIDE"
+//[MTok_DPB_DSIZE]
+"Дорожек на устройстве"
+//[MTok_DPB_INFO]
+"Информация по DPB"
+//[MTok_DPB_MAXBLOK]
+"Последний блок"
+//[MTok_DPB_TSIZE]
+"Блоков на дорожке"
+//[MTok_DPB_TYPE]
+"Тип устройства"
+//[MTok_DPB_VOLUME_ID]
+"Номер тома (Volume ID)"
+//[MTok_DPB_VTOCADR]
+"Блок VTOC"
+//[MTok_ERROR_LOADING]
+"Ошибка загрузки файла, проверьте, правильно ли установлен формат"
+//[MTok_ERROR_OPENING]
+"Ошибка открытия файла"
+//[MTok_ERROR_PARSING]
+"При анализе файла найдены ошибки"
+//[MTok_EXTENT]
+"Экстент"
+//[MTok_FAT_BAD_CLUSTERS]
+"Плохие кластеры"
+//[MTok_FAT_BPB_GEOMETRY]
+"Геометрия по BPB"
+//[MTok_FAT_BYTES_PER_SECTOR]
+"Размер сектора в байтах"
+//[MTok_FAT_CLUSTERS]
+"Статистика по кластерам"
+//[MTok_FAT_CLUSTER_SIZE]
+"Размер кластера"
+//[MTok_FAT_DATA_START]
+"Первый LBA области данных"
+//[MTok_FAT_FAT_START]
+"LBA начала FAT"
+//[MTok_FAT_FREE_CLUSTERS]
+"Кластеров свободно"
+//[MTok_FAT_FS_TYPE]
+"Тип файловой системы"
+//[MTok_FAT_HIDDEN_SECTORS]
+"Скрытых секторов"
+//[MTok_FAT_LAYOUT]
+"Разметка тома"
+//[MTok_FAT_MEDIA_DESCRIPTOR]
+"Дескриптор носителя"
+//[MTok_FAT_NUM_FATS]
+"Количество таблиц FAT"
+//[MTok_FAT_NUM_HEADS]
+"Количество сторон"
+//[MTok_FAT_OEM_NAME]
+"OEM-имя"
+//[MTok_FAT_REGIONS_LBA]
+"Адреса областей (LBA)"
+//[MTok_FAT_RESERVED_SECTORS]
+"Резервных секторов"
+//[MTok_FAT_ROOT_DIR_SECTORS]
+"Секторов для корневой директории"
+//[MTok_FAT_ROOT_DIR_START]
+"Первый LBA корневой директории"
+//[MTok_FAT_ROOT_ENTRIES]
+"Элементов в корневой директории"
+//[MTok_FAT_SECTORS_PER_CLUSTER]
+"Секторов в кластере"
+//[MTok_FAT_SECTORS_PER_FAT]
+"Секторов в таблице FAT"
+//[MTok_FAT_SECTORS_PER_TRACK]
+"Секторов на дорожке"
+//[MTok_FAT_TOTAL_CLUSTERS]
+"Кластеров всего"
+//[MTok_FAT_TOTAL_SECTORS]
+"Всего секторов"
+//[MTok_FAT_USED_CLUSTERS]
+"Кластеров занято"
+//[MTok_FILE_DELETED]
+"Файл помечен как удаленный, данные ниже могут быть некорректны"
+//[MTok_FILE_END_REACHED]
+"Конец файла"
+//[MTok_FILE_HAS_BAD_SECTORS]
+"Файл повреждён"
+//[MTok_FILE_HAS_ERRORS]
+"Файл содержит повреждённые данные!"
+//[MTok_FILE_HAS_NO_ERRORS]
+"Файл прочитан без ошибок."
+//[MTok_FILE_NAME]
+"Имя Файла"
+//[MTok_FONT_A7]
+"Агат-7"
+//[MTok_FONT_A9]
+"Агат-9"
+//[MTok_FONT_FILE]
+"Знакогенератор"
+//[MTok_FONT_FILE_BFT]
+"Шрифт BFT"
+//[MTok_FONT_LOADING_ERROR]
+"Загружаемый шрифт не найден"
+//[MTok_FORMAT_REVISION]
+"Версия формата"
+//[MTok_FREE_BYTES]
+"Свободных байт"
+//[MTok_FREE_SECTORS]
+"Незанятых секторов"
+//[MTok_HEADER]
+"Заголовок"
+//[MTok_HEAD_MAP]
+"Таблица сторон"
+//[MTok_INCORRECT_TS_DATA]
+"Данные в таблице секторов некорректны, обработка прервана"
+//[MTok_INDEX_CRC_ERROR]
+"CRC: Ошибка"
+//[MTok_INDEX_CRC_OK]
+"CRC: OK"
+//[MTok_INDEX_EPILOGUE_ERROR]
+"Эпилог: Ошибка"
+//[MTok_INDEX_EPILOGUE_OK]
+"Эпилог: ОК"
+//[MTok_INDEX_MARK]
+"Метка индекса"
+//[MTok_LOGICAL_SECTOR]
+"S"
+//[MTok_META_CPM_ARCHIVE]
+"Архивный"
+//[MTok_META_CPM_SYSTEM]
+"Системный"
+//[MTok_META_CPM_USER]
+"User #"
+//[MTok_META_DATE]
+"Дата (ДД.ММ.ГГГГ)"
+//[MTok_META_EXTENDED]
+"Расш. атрибут"
+//[MTok_META_FILENAME]
+"Имя Файла"
+//[MTok_META_HIDDEN]
+"Скрытый"
+//[MTok_META_PROTECTED]
+"Защита"
+//[MTok_META_TYPE]
+"Тип"
+//[MTok_MONOCHROME]
+"Монохромный"
+//[MTok_NEXT_TS]
+"Следующая таблица секторов"
+//[MTok_NO]
+"Нет"
+//[MTok_NORMAL_DATA]
+"Данные сектора"
+//[MTok_NORMAL_DATA_WITH_ERROR]
+"ДАННЫЕ ОШИБОЧНЫ"
+//[MTok_NO_BAD_SECTORS_IN_DIRECTORY]
+"В корневом каталоге нет повреждённых секторов"
+//[MTok_NO_BAD_SECTORS_IN_RESERVED]
+"В области загрузки повреждённых секторов нет"
+//[MTok_NO_DATA_FIELD]
+"Нет поля данных после заголовка"
+//[MTok_NO_DATE]
+"нет даты"
+//[MTok_NO_FILES_WITH_BAD_SECTORS]
+"Файлов с повреждёнными секторами не найдено"
+//[MTok_NO_SIGNATURE]
+"Сигнатура формата не найдена. обработка прервана"
+//[MTok_NTSC_APPLE_IMPROVED]
+"С заливкой"
+//[MTok_NTSC_APPLE_ORIGINAL]
+"NTSC без заливки"
+//[MTok_ONIX_ALLOCATION_TABLE]
+"Таблица размещения"
+//[MTok_ONIX_ATTRIBUTES]
+"Атрибуты"
+//[MTok_ONIX_BLOCK_SIZE]
+"Размер блока"
+//[MTok_ONIX_DATE]
+"Дата"
+//[MTok_ONIX_DESCRIBED_BLOCKS]
+"Блоков в таблице размещения"
+//[MTok_ONIX_DIRECTORY]
+"Каталог"
+//[MTok_ONIX_DISK_BLOCKS]
+"Блоков на диске"
+//[MTok_ONIX_ENTRIES_PER_BLOCK]
+"Записей каталога в блоке"
+//[MTok_ONIX_ENTRY_LENGTH]
+"Размер записи каталога"
+//[MTok_ONIX_EXEC_ADDRESS]
+"Адрес запуска"
+//[MTok_ONIX_FILE_BLOCKS]
+"Блоки файла"
+//[MTok_ONIX_FIRST_BLOCK]
+"Первый блок"
+//[MTok_ONIX_FREE_BLOCKS]
+"Свободно блоков"
+//[MTok_ONIX_LAYOUT]
+"Разметка тома"
+//[MTok_ONIX_LOAD_ADDRESS]
+"Адрес загрузки"
+//[MTok_ONIX_ROOT_BLOCK]
+"Блок корневого каталога"
+//[MTok_ONIX_SYSTEM_BLOCKS]
+"Системных блоков"
+//[MTok_ONIX_TABLE_BLOCKS]
+"Блоков в таблице"
+//[MTok_ONIX_TABLE_FIRST_BLOCK]
+"Первый блок таблицы"
+//[MTok_ONIX_USED_BLOCKS]
+"Занято блоков"
+//[MTok_PALETTE]
+"Палитра"
+//[MTok_PARSING_FINISHED]
+"Анализ завершён"
+//[MTok_PRODOS_ACCESS]
+"Доступ"
+//[MTok_PRODOS_AUX_TYPE]
+"Дополнительный тип"
+//[MTok_PRODOS_BITMAP_POINTER]
+"Первый блок карты занятости"
+//[MTok_PRODOS_BLOCKS_USED]
+"Блоков под файл"
+//[MTok_PRODOS_BLOCK_SIZE]
+"Размер блока"
+//[MTok_PRODOS_CREATED]
+"Создан"
+//[MTok_PRODOS_DIRECTORY]
+"Каталог тома"
+//[MTok_PRODOS_ENTRIES_PER_BLOCK]
+"Записей каталога в блоке"
+//[MTok_PRODOS_ENTRY_LENGTH]
+"Размер записи каталога"
+//[MTok_PRODOS_FILE_BLOCKS]
+"Блоки файла"
+//[MTok_PRODOS_FILE_COUNT]
+"Файлов в корневом каталоге"
+//[MTok_PRODOS_FREE_BLOCKS]
+"Свободно блоков"
+//[MTok_PRODOS_KEY_POINTER]
+"Ключевой блок"
+//[MTok_PRODOS_LAYOUT]
+"Разметка тома"
+//[MTok_PRODOS_MIN_VERSION]
+"Минимальная версия"
+//[MTok_PRODOS_MODIFIED]
+"Последнее изменение"
+//[MTok_PRODOS_STORAGE_TYPE]
+"Тип хранения"
+//[MTok_PRODOS_TOTAL_BLOCKS]
+"Всего блоков"
+//[MTok_PRODOS_USED_BLOCKS]
+"Занято блоков"
+//[MTok_PRODOS_VERSION]
+"Версия"
+//[MTok_PRODOS_VOLUME_NAME]
+"Метка тома"
+//[MTok_PROTECTED]
+"Защита"
+//[MTok_RT11_BLOCKS]
+"Блоки"
+//[MTok_RT11_CLUSTER_SIZE]
+"Размер кластера"
+//[MTok_RT11_DATA_START]
+"Первый блок данных"
+//[MTok_RT11_DATE]
+"Дата"
+//[MTok_RT11_DIRECTORY]
+"Каталог"
+//[MTok_RT11_DIR_BLOCK]
+"Первый блок каталога"
+//[MTok_RT11_DISK_BLOCKS]
+"Блоков в образе"
+//[MTok_RT11_ENTRY]
+"запись"
+//[MTok_RT11_EXTRA_BYTES]
+"Дополнительных байт в записи"
+//[MTok_RT11_FILES]
+"Файлов"
+//[MTok_RT11_FIRST_BLOCK]
+"Первый блок"
+//[MTok_RT11_FREE_BLOCKS]
+"Свободно блоков"
+//[MTok_RT11_HOME_BLOCK]
+"Блок описания тома"
+//[MTok_RT11_JOB]
+"Задание и канал"
+//[MTok_RT11_LENGTH]
+"Длина в блоках"
+//[MTok_RT11_OWNER]
+"Владелец"
+//[MTok_RT11_SEGMENT]
+"Сегмент каталога"
+//[MTok_RT11_SEGMENTS]
+"Сегментов каталога"
+//[MTok_RT11_SEGMENTS_USED]
+"Используется сегментов"
+//[MTok_RT11_STATUS]
+"Состояние"
+//[MTok_RT11_SYSTEM_ID]
+"Идентификатор системы"
+//[MTok_RT11_USED_BLOCKS]
+"Занято блоков"
+//[MTok_RT11_VERSION]
+"Версия системы"
+//[MTok_RT11_VOLUME_BLOCKS]
+"Блоков по каталогу"
+//[MTok_RT11_VOLUME_ID]
+"Номер тома (Volume ID)"
+//[MTok_SECTORS]
+"сектор(ов)"
+//[MTok_SECTORS_MAP]
+"Таблица секторов"
+//[MTok_SECTOR_CRC_ERROR]
+"CRC: Ошибка"
+//[MTok_SECTOR_CRC_OK]
+"CRC: OK"
+//[MTok_SECTOR_ERROR]
+"Ошибка данных"
+//[MTok_SECTOR_INDEX]
+"Индекс"
+//[MTok_SECTOR_INDEX_END_ERROR]
+"Конец индекса: Не найден"
+//[MTok_SECTOR_INDEX_END_OK]
+"Конец индекса: ОК"
+//[MTok_SECTOR_UNAVAILABLE]
+"ДАННЫЕ ОТСУТСТВУЮТ"
+//[MTok_SELECTOR_AGAT_FONT]
+"Шрифт"
+//[MTok_SELECTOR_AGAT_FONT_TYPE]
+"Тип шрифта"
+//[MTok_SELECTOR_AGAT_INFO]
+"Комментарий"
+//[MTok_SELECTOR_AGAT_PALETTE]
+"Палитра"
+//[MTok_SELECTOR_APPLE_HIRES_AGAT]
+"Цветной режим Агат"
+//[MTok_SELECTOR_APPLE_HIRES_APPLE]
+"Цветной режим Apple"
+//[MTok_SIDE]
+"Сторона"
+//[MTok_SIDES]
+"Стороны"
+//[MTok_SIDE_SHORT]
+"H"
+//[MTok_SIGNATURE]
+"Сигнатура"
+//[MTok_SIZE]
+"Размер Файла"
+//[MTok_SIZE_CODE_SHORT]
+"N"
+//[MTok_TRACK]
+"Дорожка"
+//[MTok_TRACKLIST_OFFSET]
+"Список дорожек"
+//[MTok_TRACKS]
+"Дорожки"
+//[MTok_TRACK_LAYOUT]
+"Разметка дорожек"
+//[MTok_TRACK_OFFSET]
+"Смещение"
+//[MTok_TRACK_SHORT]
+"Т"
+//[MTok_TRACK_SIZE]
+"Размер"
+//[MTok_TS_LIST_DATA]
+"Таблица секторов"
+//[MTok_TS_LIST_LOCATION]
+"Расположение таблицы секторов"
+//[MTok_TYPE]
+"Тип"
+//[MTok_UNEXPECTED_END_OF_FILE]
+"Ошибка: Неожиданный конец файла"
+//[MTok_UNKNOWN_DATA_MARKER]
+"Неизвестный маркер данных"
+//[MTok_VOLUME_ID]
+"V"
+//[MTok_VTOC_BYTES_PER_SECTOR]
+"Размер сектора в байтах"
+//[MTok_VTOC_CATALOG_SECTOR]
+"Корневой каталог, сектор"
+//[MTok_VTOC_CATALOG_TRACK]
+"Корневой каталог, дорожка"
+//[MTok_VTOC_DIRECTION]
+"Направление заполнения"
+//[MTok_VTOC_DOS_RELEASE]
+"Версия DOS"
+//[MTok_VTOC_FOUND]
+"Найден DOS 3.3 VTOC"
+//[MTok_VTOC_LAST_TRACK]
+"Последняя занятая дорожка"
+//[MTok_VTOC_NOT_FOUND]
+"DOS 3.3 VTOC не найден"
+//[MTok_VTOC_PAIRS_ON_SECTOR]
+"Пар T/S в списке"
+//[MTok_VTOC_SECTORS_ON_TRACK]
+"Количество секторов"
+//[MTok_VTOC_TRACKS_TOTAL]
+"Дорожек всего"
+//[MTok_VTOC_VOLUME_ID]
+"Номер тома (Volume ID)"
+//[MTok_VTOC_VOLUME_NAME]
+"Метка тома"
+//[MTok_YES]
+"Да"
