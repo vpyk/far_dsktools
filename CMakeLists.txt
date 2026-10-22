@@ -65,9 +65,16 @@ foreach(lng ${LNG_FILES})
     endif()
 endforeach()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS src/lang.hpp ${LNG_FILES})
+
+# Help (F1 on the panel shows the topic @Contents of the .hlf in FAR's help language)
+set(HLF_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/DskToolsEng.hlf
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/DskToolsRus.hlf
+)
+
 # FAR looks for them next to the DLL
 add_custom_command(TARGET plug POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${LNG_FILES} $<TARGET_FILE_DIR:plug>)
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${LNG_FILES} ${HLF_FILES} $<TARGET_FILE_DIR:plug>)
 
 if(MSVC)
     target_compile_options(plug PRIVATE /W4)

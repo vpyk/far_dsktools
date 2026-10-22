@@ -1,0 +1,29 @@
+﻿.Language=English,English
+.PluginContents=DskTools
+
+
+@Contents
+$ #DskTools#
+ Browses and edits disk images of retro computers: Agat and Apple II
+(DOS 3.3, ProDOS, Sprite OS, Onix), CP/M machines (Korvet, Orion,
+Vector, Irisha...), MS-DOS and Atari ST diskettes (FAT), DVK, BK and
+UKNC (RT-11), Iskra-226. Raw sector images, HFE, MFM/NIB/NIC, AIM, IMD.
+ Files can be written into raw sector images with CP/M, DOS 3.3, FAT
+and RT-11; the image file is saved right after every operation.
+
+ #Opening an image#
+ Open the disk image under the cursor             #Enter, Ctrl+PgDn#
+ Open an image from the command line                    #dsk:<file>#
+ Close the image (at its root)              #Enter on .., Ctrl+PgUp#
+
+ #Inside the image#
+ Copy, move to the other panel or into the image            #F5, F6#
+ Copy under another name in the same folder               #Shift+F5#
+ Rename                                                   #Shift+F6#
+ Make a folder (CP/M: a user area)                              #F7#
+ Delete                                                         #F8#
+ View, edit                                                 #F3, F4#
+ Information about the image                                #Ctrl+L#
+ Find files                                                 #Alt+F7#
+
+ CP/M user areas 1..31 are shown as folders #USER_01#..#USER_31#.
