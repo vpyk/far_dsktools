@@ -158,3 +158,5 @@
 "Cannot copy a file onto itself"
 //[MCopyArea]
 "CP/M user areas cannot be copied within the image"
+//[MColumnType]
+"Type"

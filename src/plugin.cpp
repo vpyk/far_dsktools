@@ -745,6 +745,12 @@ extern "C" HANDLE WINAPI OpenW(const struct OpenInfo *Info)
     return open_image(di, false);
 }
 
+// Does the filesystem have file types to show in the "Type" column?
+static bool has_types(PluginPanel &panel)
+{
+    return static_cast<bool>(panel.filesystem->get_caps() & dsk_tools::FSCaps::Types);
+}
+
 extern "C" void WINAPI GetOpenPanelInfoW(struct OpenPanelInfo *Info)
 {
     auto it = g_Panels.find(reinterpret_cast<intptr_t>(Info->hPanel));
@@ -763,8 +769,18 @@ extern "C" void WINAPI GetOpenPanelInfoW(struct OpenPanelInfo *Info)
     Info->InfoLinesNumber  = 0;
     Info->DescrFiles       = nullptr;
     Info->DescrFilesNumber = 0;
-    Info->PanelModesArray  = nullptr;
-    Info->PanelModesNumber = 0;
+    // Filesystems with file types (FSCaps::Types: DOS 3.3 B/A/T, ProDOS BIN/BAS, CP/M and FAT
+    // attributes...) get a "Type" column (C0, from UniversalFile::type_label) in Full (3) and
+    // Wide (4); the other modes are FAR's own (no ColumnTypes)
+    static const wchar_t *fullTitles[] = { nullptr, nullptr, nullptr, nullptr, nullptr };
+    static const wchar_t *wideTitles[] = { nullptr, nullptr, nullptr };
+    static PanelMode modes[10] = {};
+    fullTitles[1] = wideTitles[1] = msg(MColumnType);
+    modes[3] = { L"N,C0,S,D,T", L"0,4,10,0,5", fullTitles, nullptr, nullptr, PMFLAGS_NONE };
+    modes[4] = { L"N,C0,S",     L"0,4,0",      wideTitles, nullptr, nullptr, PMFLAGS_NONE };
+    const bool types = has_types(it->second);
+    Info->PanelModesArray  = types ? modes : nullptr;
+    Info->PanelModesNumber = types ? ARRAYSIZE(modes) : 0;
     // Full (name, size, date, time) where the filesystem keeps dates, Wide (name, size) otherwise
     bool dates = static_cast<bool>(it->second.filesystem->get_caps() & dsk_tools::FSCaps::Date);
     Info->StartPanelMode   = dates ? '3' : '4';
@@ -797,6 +813,7 @@ extern "C" intptr_t WINAPI GetFindDataW(struct GetFindDataInfo *Info)
 
     auto *items = new PluginPanelItem[count];
     memset(items, 0, sizeof(PluginPanelItem) * count);
+    const bool types = has_types(panel);
 
     for (size_t i = 0; i < count; ++i)
     {
@@ -809,10 +826,19 @@ extern "C" intptr_t WINAPI GetFindDataW(struct GetFindDataInfo *Info)
         wmemcpy(fileName, name.c_str(), name.size() + 1);
         items[i].FileName          = fileName;
         items[i].AlternateFileName = nullptr;
-        items[i].Description       = nullptr;  // TODO: show type_label if available
+        items[i].Description       = nullptr;
         items[i].Owner             = nullptr;
         items[i].CustomColumnData  = nullptr;
         items[i].CustomColumnNumber = 0;
+        if (types)
+        {
+            // The "Type" column (C0); freed with the name in FreeFindDataW
+            std::wstring label = to_wide(uf.type_label);
+            auto *text = new wchar_t[label.size() + 1];
+            wmemcpy(text, label.c_str(), label.size() + 1);
+            items[i].CustomColumnData   = new const wchar_t *[1] { text };
+            items[i].CustomColumnNumber = 1;
+        }
         items[i].Flags             = PPIF_NONE;
         items[i].UserData          = { reinterpret_cast<void*>(static_cast<intptr_t>(i)), nullptr };
         items[i].LastWriteTime     = to_filetime(uf.date);
@@ -833,7 +859,13 @@ extern "C" intptr_t WINAPI GetFindDataW(struct GetFindDataInfo *Info)
 extern "C" void WINAPI FreeFindDataW(const struct FreeFindDataInfo *Info)
 {
     for (size_t i = 0; i < Info->ItemsNumber; ++i)
-        delete[] Info->PanelItem[i].FileName;
+    {
+        const auto &item = Info->PanelItem[i];
+        delete[] item.FileName;
+        for (size_t c = 0; c < item.CustomColumnNumber; ++c)
+            delete[] item.CustomColumnData[c];
+        delete[] item.CustomColumnData;
+    }
     delete[] Info->PanelItem;
 }
 

@@ -84,4 +84,5 @@ enum LngId : int
     MCannotCopy,
     MCopySelf,
     MCopyArea,
+    MColumnType,
 };
