@@ -85,4 +85,6 @@ enum LngId : int
     MCopySelf,
     MCopyArea,
     MColumnType,
+    MCopyReadOnly,
+    MCopyFlatAreas,
 };

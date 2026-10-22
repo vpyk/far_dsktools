@@ -160,3 +160,7 @@
 "CP/M user areas cannot be copied within the image"
 //[MColumnType]
 "Type"
+//[MCopyReadOnly]
+"Set &read-only attribute on protected files"
+//[MCopyFlatAreas]
+"Put all user areas into &one folder"

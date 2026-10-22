@@ -92,26 +92,34 @@ static std::wstring sanitize_name(const std::wstring &name)
 
 // Display/extraction names for a listing: sanitized and unique within it
 // (Windows names are case-insensitive), a clash gets "~2", "~3"... before the extension
+static std::wstring name_key(std::wstring s)
+{
+    CharUpperBuffW(&s[0], static_cast<DWORD>(s.size()));
+    return s;
+}
+
+// `name` made unique among `used` (keys of name_key()), then added there
+static std::wstring unique_name(std::wstring name, bool isDir, std::set<std::wstring> &used)
+{
+    if (used.count(name_key(name)))
+    {
+        auto dot = isDir ? std::wstring::npos : name.rfind(L'.');
+        std::wstring stem = name.substr(0, dot);
+        std::wstring ext  = (dot == std::wstring::npos) ? L"" : name.substr(dot);
+        for (int n = 2; used.count(name_key(name)); ++n)
+            name = stem + L"~" + std::to_wstring(n) + ext;
+    }
+    used.insert(name_key(name));
+    return name;
+}
+
 static std::vector<std::wstring> build_wide_names(const dsk_tools::Files &files)
 {
     std::vector<std::wstring> names;
     names.reserve(files.size());
     std::set<std::wstring> used;
-    auto key = [](std::wstring s) { CharUpperBuffW(&s[0], static_cast<DWORD>(s.size())); return s; };
     for (const auto &f : files)
-    {
-        std::wstring name = sanitize_name(to_wide(f.name));
-        if (used.count(key(name)))
-        {
-            auto dot = f.is_dir ? std::wstring::npos : name.rfind(L'.');
-            std::wstring stem = name.substr(0, dot);
-            std::wstring ext  = (dot == std::wstring::npos) ? L"" : name.substr(dot);
-            for (int n = 2; used.count(key(name)); ++n)
-                name = stem + L"~" + std::to_wstring(n) + ext;
-        }
-        used.insert(key(name));
-        names.push_back(name);
-    }
+        names.push_back(unique_name(sanitize_name(to_wide(f.name)), f.is_dir, used));
     return names;
 }
 
@@ -929,6 +937,10 @@ struct OpContext
     bool skipErrors   = false;
     bool changed      = false;  // the image was modified and has to be saved
     bool broken       = false;  // a write failed halfway: the in-memory image is not trusted
+    // Copy dialog options for extraction
+    bool readOnly     = false;  // protected files get the read-only attribute
+    bool flatAreas    = false;  // CP/M user areas go into the destination itself, not USER_nn
+    std::set<std::wstring> flatNames;   // name_key()s used there by this operation
 };
 
 // Error on `what`: Skip / Skip all / Cancel
@@ -1024,6 +1036,8 @@ static Outcome extract_file(OpContext &ctx, const dsk_tools::UniversalFile &uf,
         DeleteFileW(outPath.c_str());
         return op_error(ctx, outPath, ok ? std::wstring(msg(MWriteIncomplete)) : last_error_text(err));
     }
+    if (ctx.readOnly && uf.is_protected)
+        SetFileAttributesW(outPath.c_str(), FILE_ATTRIBUTE_READONLY);
     return Outcome::Ok;
 }
 
@@ -1078,17 +1092,27 @@ static Outcome extract_dir(OpContext &ctx, const dsk_tools::UniversalFile &dir,
 }
 
 // CP/M: copies a whole user area (virtual USER_nn directory) into destDir\USER_nn
+// or, with OpContext::flatAreas, into destDir itself: a name already taken there by this
+// operation (another area, a selected file) gets "~2"
 static Outcome extract_cpm_area(OpContext &ctx, unsigned user, const std::wstring &destDir)
 {
-    std::wstring dirPath = join_path(destDir, cpm_user_dir(user));
-    Outcome o = make_dir(ctx, dirPath);
-    if (o != Outcome::Ok)
-        return o;
-
     dsk_tools::Files area;
     for (const auto &f : ctx.panel.cpmAll)
         if (!f.is_dir && cpm_user(f) == user)
             area.push_back(f);
+
+    if (ctx.flatAreas)
+    {
+        std::vector<std::wstring> names;
+        for (const auto &f : area)
+            names.push_back(unique_name(sanitize_name(to_wide(f.name)), false, ctx.flatNames));
+        return extract_list(ctx, area, names, destDir);
+    }
+
+    std::wstring dirPath = join_path(destDir, cpm_user_dir(user));
+    Outcome o = make_dir(ctx, dirPath);
+    if (o != Outcome::Ok)
+        return o;
     return extract_list(ctx, area, build_wide_names(area), dirPath);
 }
 
@@ -1498,10 +1522,16 @@ enum class ExistingFiles { Ask, Overwrite, Skip };
 
 // F5/F6 out of the image: FAR shows no dialog of its own there (it calls GetFilesW with
 // the other panel's path), so the plugin does. Returns false on Cancel; dest is the
-// destination as the user left it, existing what to do with files already there
-// (Ask by default every time, as in FAR's own dialogs).
-static bool copy_dialog(const GetFilesInfo *Info, PluginPanel &panel, std::wstring &dest,
-                        ExistingFiles &existing)
+// destination as the user left it. The options start from their defaults every time
+// (Ask, no read-only, areas in USER_nn), as in FAR's own dialogs.
+struct CopyOptions
+{
+    ExistingFiles existing  = ExistingFiles::Ask;
+    bool          readOnly  = false;
+    bool          flatAreas = false;
+};
+
+static bool copy_dialog(const GetFilesInfo *Info, PluginPanel &panel, std::wstring &dest, CopyOptions &options)
 {
     static const UUID PluginUuid = PLUGIN_UUID;
     static const UUID DialogUuid = COPY_DIALOG_UUID;
@@ -1530,11 +1560,22 @@ static bool copy_dialog(const GetFilesInfo *Info, PluginPanel &panel, std::wstri
     int choice = static_cast<int>(ExistingFiles::Ask);
     auto *combo = builder.AddComboBox(&choice, nullptr, 20, existingIds, ARRAYSIZE(existingIds), DIF_DROPDOWNLIST);
     builder.AddTextBefore(combo, MExistingFiles);
+    builder.AddCheckbox(MCopyReadOnly, &options.readOnly);
+
+    // Only when a CP/M user area is among the items
+    bool areas = false;
+    for (size_t i = 0; panel.cpmUsers && i < Info->ItemsNumber; ++i)
+    {
+        intptr_t idx = reinterpret_cast<intptr_t>(Info->PanelItem[i].UserData.Data);
+        areas |= idx >= 0 && static_cast<size_t>(idx) < panel.files.size() && panel.files[idx].is_dir;
+    }
+    if (areas)
+        builder.AddCheckbox(MCopyFlatAreas, &options.flatAreas);
     builder.AddOKCancel(move ? MMoveButton : MCopyButton, MDialogCancel);
 
     if (!builder.ShowDialog())
         return false;
-    existing = static_cast<ExistingFiles>(choice);
+    options.existing = static_cast<ExistingFiles>(choice);
     return true;
 }
 
@@ -1610,8 +1651,8 @@ extern "C" intptr_t WINAPI GetFilesW(struct GetFilesInfo *Info)
     if (interactive)
     {
         std::wstring typed = destDir;
-        ExistingFiles existing = ExistingFiles::Ask;
-        if (!copy_dialog(Info, panel, typed, existing))
+        CopyOptions options;
+        if (!copy_dialog(Info, panel, typed, options))
             return -1;
         std::wstring dest = resolve_dest(typed, destDir);
 
@@ -1638,8 +1679,18 @@ extern "C" intptr_t WINAPI GetFilesW(struct GetFilesInfo *Info)
         }
         panel.destPath  = destDir;
         Info->DestPath  = panel.destPath.c_str();   // FAR updates descriptions there
-        ctx.overwriteAll = existing == ExistingFiles::Overwrite;
-        ctx.skipExisting = existing == ExistingFiles::Skip;
+        ctx.overwriteAll = options.existing == ExistingFiles::Overwrite;
+        ctx.skipExisting = options.existing == ExistingFiles::Skip;
+        ctx.readOnly     = options.readOnly;
+        ctx.flatAreas    = options.flatAreas;
+
+        // Areas copied into one folder must not take the names of the selected files
+        for (size_t i = 0; ctx.flatAreas && i < Info->ItemsNumber; ++i)
+        {
+            intptr_t idx = reinterpret_cast<intptr_t>(Info->PanelItem[i].UserData.Data);
+            if (idx >= 0 && static_cast<size_t>(idx) < panel.files.size() && !panel.files[idx].is_dir)
+                ctx.flatNames.insert(name_key(renameTo.empty() ? panel.wideNames[idx] : renameTo));
+        }
     }
 
     std::vector<size_t> extracted;
