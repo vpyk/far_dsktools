@@ -214,6 +214,12 @@
 "Cannot move"
 //[MOpUserArea]
 "changing user areas"
+//[MMoveToAreaPrompt]
+"Move %1 to user area:"
+//[MAreaRoot]
+"USER_00 (root)"
+//[MKeyBarArea]
+"Area"
 
 // {$TOKEN} placeholders of fileSystem::information(): texts of DISK Commander
 // (https://github.com/Ptr314/dsk_commander, src/placeholders.h, src/i18n/ru_ru.ts)

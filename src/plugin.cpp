@@ -1021,11 +1021,17 @@ extern "C" void WINAPI GetOpenPanelInfoW(struct OpenPanelInfo *Info)
     Info->StartPanelMode   = dates ? '3' : '4';
     Info->StartSortMode    = SM_UNSORTED;
     Info->StartSortOrder   = 0;
-    // F6 only moves here (FAR's label is RenMov): renaming is Shift+F6, see ProcessPanelInputW
-    static KeyBarLabel keyBarLabels[] = { { { VK_F6, 0 }, nullptr, nullptr } };
-    static KeyBarTitles keyBar = { ARRAYSIZE(keyBarLabels), keyBarLabels };
+    // F6 only moves here (FAR's label is RenMov): renaming is Shift+F6, see ProcessPanelInputW;
+    // in CP/M Alt+F6 moves files into another user area. Two sets: FAR keeps the pointer.
+    static KeyBarLabel keyBarLabels[] = {
+        { { VK_F6, 0 },                nullptr, nullptr },
+        { { VK_F6, LEFT_ALT_PRESSED }, nullptr, nullptr },
+    };
+    static KeyBarTitles keyBar    = { 1, keyBarLabels };
+    static KeyBarTitles keyBarCpm = { 2, keyBarLabels };
     keyBarLabels[0].Text = keyBarLabels[0].LongText = msg(MKeyBarMove);
-    Info->KeyBar           = &keyBar;
+    keyBarLabels[1].Text = keyBarLabels[1].LongText = msg(MKeyBarArea);
+    Info->KeyBar           = it->second.cpmUsers ? &keyBarCpm : &keyBar;
     Info->ShortcutData     = nullptr;
     Info->FreeSize         = it->second.freeSize;
     Info->UserData         = { nullptr, nullptr };
@@ -2683,32 +2689,15 @@ static std::vector<std::wstring> selected_names(HANDLE hPanel)
     return names;
 }
 
-// F6 with the same CP/M image in the other panel: moves the selected files into the user
-// area shown there. Returns false to leave the key to FAR (not that case).
-static bool move_to_area(HANDLE hPanel, PluginPanel &panel)
+using AreaItems = std::vector<std::pair<dsk_tools::UniversalFile, std::wstring>>;
+
+// The selected files of a CP/M panel (or the one under the cursor); a USER_nn among them is
+// refused with a message
+static AreaItems area_move_items(HANDLE hPanel, PluginPanel &panel)
 {
-    if (!panel.cpmUsers)
-        return false;
-    PluginPanel *twin = twin_panel(panel);
-    if (!twin)
-        return false;
-    const unsigned target = twin->cpmUser;
-
-    sync_image(panel, true);
-    std::vector<std::wstring> names = selected_names(hPanel);
-    if (names.empty())
-        return true;
-    if (target == panel.cpmUser)
-    {
-        show_error(msg(MSameArea));
-        return true;
-    }
-    if (!check_writable(panel, true, dsk_tools::FSCaps::Metadata, MOpUserArea))
-        return true;
-
-    std::vector<std::pair<dsk_tools::UniversalFile, std::wstring>> items;
+    AreaItems items;
     bool areas = false;
-    for (const auto &name : names)
+    for (const auto &name : selected_names(hPanel))
     {
         intptr_t idx = name_index(panel, name);
         if (idx < 0)
@@ -2720,16 +2709,19 @@ static bool move_to_area(HANDLE hPanel, PluginPanel &panel)
     }
     if (areas)
         show_error(msg(MMoveArea));
-    if (items.empty())
-        return true;
+    return items;
+}
 
-    if (far_confirmation(L"Move"))
-    {
-        std::wstring what = items.size() == 1 ? L"\"" + items.front().second + L"\"" : items_text(items.size());
-        if (ask({ msg(MMoveToArea, { what, std::to_wstring(target) }) }, { msg(MMoveButton), msg(MCancel) }) != 0)
-            return true;
-    }
+// "\"NAME\"" for one item, "N items" for more
+static std::wstring area_items_text(const AreaItems &items)
+{
+    return items.size() == 1 ? L"\"" + items.front().second + L"\"" : items_text(items.size());
+}
 
+// Moves `items` into user area `target`: a file of the same name there is replaced after the
+// overwrite question; then the image is saved and both panels re-read
+static void move_items_to_area(HANDLE hPanel, PluginPanel &panel, const AreaItems &items, unsigned target)
+{
     auto &fs = *panel.filesystem;
     OpContext ctx{ panel, true, true, msg(MCannotMove) };
     for (const auto &item : items)
@@ -2737,7 +2729,6 @@ static bool move_to_area(HANDLE hPanel, PluginPanel &panel)
         const auto &uf = item.first;
         const auto &name = item.second;
 
-        // A file of that name in the target area: Overwrite / Skip...
         const dsk_tools::UniversalFile *existing = nullptr;
         for (const auto &f : panel.cpmAll)
             if (!f.is_dir && cpm_user(f) == target && _wcsicmp(to_wide(f.name).c_str(), to_wide(uf.name).c_str()) == 0)
@@ -2778,12 +2769,86 @@ static bool move_to_area(HANDLE hPanel, PluginPanel &panel)
     else if (ctx.changed)
         commit_changes(panel, true);
 
-    // Both panels show the image: the moved files leave one and appear in the other
+    // The moved files leave this panel; the other one may show their new area
     PSI.PanelControl(hPanel, FCTL_UPDATEPANEL, 1, nullptr);
     PSI.PanelControl(hPanel, FCTL_REDRAWPANEL, 0, nullptr);
     PSI.PanelControl(PANEL_PASSIVE, FCTL_UPDATEPANEL, 1, nullptr);
     PSI.PanelControl(PANEL_PASSIVE, FCTL_REDRAWPANEL, 0, nullptr);
+}
+
+// F6 with the same CP/M image in the other panel: moves the selected files into the user
+// area shown there. Returns false to leave the key to FAR (not that case).
+static bool move_to_twin_area(HANDLE hPanel, PluginPanel &panel)
+{
+    if (!panel.cpmUsers)
+        return false;
+    PluginPanel *twin = twin_panel(panel);
+    if (!twin)
+        return false;
+    const unsigned target = twin->cpmUser;
+
+    sync_image(panel, true);
+    if (target == panel.cpmUser)
+    {
+        show_error(msg(MSameArea));
+        return true;
+    }
+    if (!check_writable(panel, true, dsk_tools::FSCaps::Metadata, MOpUserArea))
+        return true;
+    AreaItems items = area_move_items(hPanel, panel);
+    if (items.empty())
+        return true;
+
+    if (far_confirmation(L"Move")
+        && ask({ msg(MMoveToArea, { area_items_text(items), std::to_wstring(target) }) },
+               { msg(MMoveButton), msg(MCancel) }) != 0)
+        return true;
+    move_items_to_area(hPanel, panel, items, target);
     return true;
+}
+
+// Alt+F6 in a CP/M image: moves the selected files into the user area picked from a list
+// (a list rather than a typed number or path: nothing can be mistyped)
+static void move_to_chosen_area(HANDLE hPanel, PluginPanel &panel)
+{
+    static const UUID PluginUuid = PLUGIN_UUID;
+    static const UUID DialogUuid = AREA_DIALOG_UUID;
+
+    sync_image(panel, true);
+    if (!check_writable(panel, true, dsk_tools::FSCaps::Metadata, MOpUserArea))
+        return;
+    AreaItems items = area_move_items(hPanel, panel);
+    if (items.empty())
+        return;
+
+    // The area of the other panel when it shows this image, else the root (or USER_01 there)
+    PluginPanel *twin = twin_panel(panel);
+    int choice = twin && twin->cpmUser != panel.cpmUser ? static_cast<int>(twin->cpmUser)
+               : panel.cpmUser != 0 ? 0 : 1;
+
+    std::vector<std::wstring> texts;
+    texts.push_back(msg(MAreaRoot));
+    for (unsigned u = 1; u <= CPM_MAX_USER; ++u)
+        texts.push_back(cpm_user_dir(u));
+    std::vector<const wchar_t *> list;
+    for (const auto &t : texts)
+        list.push_back(t.c_str());
+
+    std::wstring prompt = msg(MMoveToAreaPrompt, { area_items_text(items) });
+    PluginDialogBuilder builder(PSI, PluginUuid, DialogUuid, MMoveTitle, nullptr);
+    builder.AddText(prompt.c_str());
+    builder.AddComboBox(&choice, nullptr, 24, list.data(), list.size(), DIF_DROPDOWNLIST);
+    builder.AddOKCancel(MMoveButton, MDialogCancel);
+    if (!builder.ShowDialog())
+        return;
+
+    const unsigned target = static_cast<unsigned>(choice);
+    if (target == panel.cpmUser)
+    {
+        show_error(msg(MSameArea));
+        return;
+    }
+    move_items_to_area(hPanel, panel, items, target);
 }
 
 static bool is_shift_key(const INPUT_RECORD &rec, WORD key)
@@ -2793,6 +2858,15 @@ static bool is_shift_key(const INPUT_RECORD &rec, WORD key)
     const DWORD state = rec.Event.KeyEvent.dwControlKeyState;
     return (state & SHIFT_PRESSED)
         && !(state & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED | LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED));
+}
+
+static bool is_alt_key(const INPUT_RECORD &rec, WORD key)
+{
+    if (rec.EventType != KEY_EVENT || !rec.Event.KeyEvent.bKeyDown || rec.Event.KeyEvent.wVirtualKeyCode != key)
+        return false;
+    const DWORD state = rec.Event.KeyEvent.dwControlKeyState;
+    return (state & (LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED))
+        && !(state & (SHIFT_PRESSED | LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED));
 }
 
 static bool is_plain_key(const INPUT_RECORD &rec, WORD key)
@@ -2807,7 +2881,16 @@ extern "C" intptr_t WINAPI ProcessPanelInputW(const struct ProcessPanelInputInfo
     if (is_plain_key(Info->Rec, VK_F6))
     {
         auto it = g_Panels.find(reinterpret_cast<intptr_t>(Info->hPanel));
-        return it != g_Panels.end() && move_to_area(Info->hPanel, it->second) ? TRUE : FALSE;
+        return it != g_Panels.end() && move_to_twin_area(Info->hPanel, it->second) ? TRUE : FALSE;
+    }
+    if (is_alt_key(Info->Rec, VK_F6))
+    {
+        // FAR does nothing with Alt+F6 (hard link) on a plugin panel
+        auto it = g_Panels.find(reinterpret_cast<intptr_t>(Info->hPanel));
+        if (it == g_Panels.end() || !it->second.cpmUsers)
+            return FALSE;
+        move_to_chosen_area(Info->hPanel, it->second);
+        return TRUE;
     }
 
     const bool rename = is_shift_key(Info->Rec, VK_F6);

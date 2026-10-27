@@ -20,6 +20,7 @@ and RT-11; the image file is saved right after every operation.
  Copy, move to the other panel or into the image            #F5, F6#
  Copy under another name in the same folder               #Shift+F5#
  Rename                                                   #Shift+F6#
+ CP/M: move into another user area                          #Alt+F6#
  Make a folder (CP/M: a user area)                              #F7#
  Delete                                                         #F8#
  View, edit                                                 #F3, F4#

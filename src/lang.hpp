@@ -112,6 +112,9 @@ enum LngId : int
     MMoveArea,
     MCannotMove,
     MOpUserArea,
+    MMoveToAreaPrompt,
+    MAreaRoot,
+    MKeyBarArea,
     // Labels of the {$TOKEN} placeholders in fileSystem::information() (info_tokens.hpp)
     MTok_AGAT_FONT_A7_CLASSIC,
     MTok_AGAT_FONT_A7_ENCHANCED,
