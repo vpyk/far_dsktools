@@ -26,4 +26,5 @@ and RT-11; the image file is saved right after every operation.
  Information about the image                                #Ctrl+L#
  Find files                                                 #Alt+F7#
 
- CP/M user areas 1..31 are shown as folders #USER_01#..#USER_31#.
+ CP/M user areas 1..31 are shown as folders #USER_01#..#USER_31#. #F6# between
+two panels of one CP/M image moves the files into the other user area.

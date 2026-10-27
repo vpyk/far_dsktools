@@ -2638,6 +2638,154 @@ static void copy_item(HANDLE hPanel, PluginPanel &panel)
     update_panel_cursor(hPanel, shown);
 }
 
+// ── CP/M: F6 between two panels of one image ───────────────────
+// FAR would move the files through a temporary folder (GetFiles + PutFiles + DeleteFiles):
+// the attributes get lost, names that Windows or fsCPM::put_file cannot take come back
+// changed (Cyrillic ones: put_file does not apply the charmap), and the disk needs room for
+// a copy. Here only the user number (ST) of the directory entries changes instead
+// (file_set_metadata("user")); data, names and attributes stay as they are.
+
+// The other panel when it shows the same image file in DskTools, else nullptr
+static PluginPanel *twin_panel(const PluginPanel &panel)
+{
+    static const UUID PluginUuid = PLUGIN_UUID;
+    PanelInfo pi = {};
+    pi.StructSize = sizeof(PanelInfo);
+    if (!PSI.PanelControl(PANEL_PASSIVE, FCTL_GETPANELINFO, 0, &pi)
+        || !(pi.Flags & PFLAGS_PLUGIN) || !(pi.Flags & PFLAGS_VISIBLE)
+        || memcmp(&pi.OwnerGuid, &PluginUuid, sizeof(UUID)) != 0)
+        return nullptr;
+    auto it = g_Panels.find(reinterpret_cast<intptr_t>(pi.PluginHandle));
+    if (it == g_Panels.end() || &it->second == &panel
+        || name_key(it->second.hostPath) != name_key(panel.hostPath))
+        return nullptr;
+    return &it->second;
+}
+
+// Names of the selected items, or of the one under the cursor when none is selected
+static std::vector<std::wstring> selected_names(HANDLE hPanel)
+{
+    std::vector<std::wstring> names;
+    PanelInfo pi = {};
+    pi.StructSize = sizeof(PanelInfo);
+    if (!PSI.PanelControl(hPanel, FCTL_GETPANELINFO, 0, &pi))
+        return names;
+    for (size_t i = 0; i < pi.SelectedItemsNumber; ++i)
+    {
+        size_t size = static_cast<size_t>(PSI.PanelControl(hPanel, FCTL_GETSELECTEDPANELITEM, i, nullptr));
+        if (!size) continue;
+        std::vector<char> buf(size);
+        FarGetPluginPanelItem gpi = { sizeof(FarGetPluginPanelItem), size, reinterpret_cast<PluginPanelItem *>(buf.data()) };
+        if (PSI.PanelControl(hPanel, FCTL_GETSELECTEDPANELITEM, i, &gpi) && gpi.Item->FileName
+            && wcscmp(gpi.Item->FileName, L"..") != 0)
+            names.push_back(gpi.Item->FileName);
+    }
+    return names;
+}
+
+// F6 with the same CP/M image in the other panel: moves the selected files into the user
+// area shown there. Returns false to leave the key to FAR (not that case).
+static bool move_to_area(HANDLE hPanel, PluginPanel &panel)
+{
+    if (!panel.cpmUsers)
+        return false;
+    PluginPanel *twin = twin_panel(panel);
+    if (!twin)
+        return false;
+    const unsigned target = twin->cpmUser;
+
+    sync_image(panel, true);
+    std::vector<std::wstring> names = selected_names(hPanel);
+    if (names.empty())
+        return true;
+    if (target == panel.cpmUser)
+    {
+        show_error(msg(MSameArea));
+        return true;
+    }
+    if (!check_writable(panel, true, dsk_tools::FSCaps::Metadata, MOpUserArea))
+        return true;
+
+    std::vector<std::pair<dsk_tools::UniversalFile, std::wstring>> items;
+    bool areas = false;
+    for (const auto &name : names)
+    {
+        intptr_t idx = name_index(panel, name);
+        if (idx < 0)
+            continue;
+        if (panel.files[idx].is_dir)
+            areas = true;
+        else
+            items.emplace_back(panel.files[idx], name);
+    }
+    if (areas)
+        show_error(msg(MMoveArea));
+    if (items.empty())
+        return true;
+
+    if (far_confirmation(L"Move"))
+    {
+        std::wstring what = items.size() == 1 ? L"\"" + items.front().second + L"\"" : items_text(items.size());
+        if (ask({ msg(MMoveToArea, { what, std::to_wstring(target) }) }, { msg(MMoveButton), msg(MCancel) }) != 0)
+            return true;
+    }
+
+    auto &fs = *panel.filesystem;
+    OpContext ctx{ panel, true, true, msg(MCannotMove) };
+    for (const auto &item : items)
+    {
+        const auto &uf = item.first;
+        const auto &name = item.second;
+
+        // A file of that name in the target area: Overwrite / Skip...
+        const dsk_tools::UniversalFile *existing = nullptr;
+        for (const auto &f : panel.cpmAll)
+            if (!f.is_dir && cpm_user(f) == target && _wcsicmp(to_wide(f.name).c_str(), to_wide(uf.name).c_str()) == 0)
+                existing = &f;
+        if (existing)
+        {
+            Outcome o = confirm_overwrite(ctx, name);
+            if (o == Outcome::Cancelled)
+                break;
+            if (o == Outcome::Skipped)
+                continue;
+            auto r = fs.delete_file(*existing);
+            if (!r)
+            {
+                if (fails_before_change(r))
+                {
+                    if (op_error(ctx, name, describe(msg(MCannotReplace), r)) == Outcome::Cancelled)
+                        break;
+                    continue;
+                }
+                op_broken(ctx, name, describe(msg(MCannotReplace), r));
+                break;
+            }
+            ctx.changed = true;
+        }
+
+        auto r = fs.file_set_metadata(uf, { { "user", std::to_string(target) } });
+        if (!r)
+        {
+            op_broken(ctx, name, error_text(r));
+            break;
+        }
+        ctx.changed = true;
+    }
+
+    if (ctx.broken)
+        discard_changes(panel, true);
+    else if (ctx.changed)
+        commit_changes(panel, true);
+
+    // Both panels show the image: the moved files leave one and appear in the other
+    PSI.PanelControl(hPanel, FCTL_UPDATEPANEL, 1, nullptr);
+    PSI.PanelControl(hPanel, FCTL_REDRAWPANEL, 0, nullptr);
+    PSI.PanelControl(PANEL_PASSIVE, FCTL_UPDATEPANEL, 1, nullptr);
+    PSI.PanelControl(PANEL_PASSIVE, FCTL_REDRAWPANEL, 0, nullptr);
+    return true;
+}
+
 static bool is_shift_key(const INPUT_RECORD &rec, WORD key)
 {
     if (rec.EventType != KEY_EVENT || !rec.Event.KeyEvent.bKeyDown || rec.Event.KeyEvent.wVirtualKeyCode != key)
@@ -2647,8 +2795,21 @@ static bool is_shift_key(const INPUT_RECORD &rec, WORD key)
         && !(state & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED | LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED));
 }
 
+static bool is_plain_key(const INPUT_RECORD &rec, WORD key)
+{
+    return rec.EventType == KEY_EVENT && rec.Event.KeyEvent.bKeyDown && rec.Event.KeyEvent.wVirtualKeyCode == key
+        && !(rec.Event.KeyEvent.dwControlKeyState
+             & (SHIFT_PRESSED | LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED | LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED));
+}
+
 extern "C" intptr_t WINAPI ProcessPanelInputW(const struct ProcessPanelInputInfo *Info)
 {
+    if (is_plain_key(Info->Rec, VK_F6))
+    {
+        auto it = g_Panels.find(reinterpret_cast<intptr_t>(Info->hPanel));
+        return it != g_Panels.end() && move_to_area(Info->hPanel, it->second) ? TRUE : FALSE;
+    }
+
     const bool rename = is_shift_key(Info->Rec, VK_F6);
     if (!rename && !is_shift_key(Info->Rec, VK_F5))
         return FALSE;

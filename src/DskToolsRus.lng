@@ -204,6 +204,16 @@
 "Запись отключена в настройках плагина"
 //[MCannotBackup]
 "Не удалось создать резервную копию"
+//[MMoveToArea]
+"Перенести %1 в область пользователя %2?"
+//[MSameArea]
+"Файлы уже находятся в этой области пользователя"
+//[MMoveArea]
+"Область пользователя нельзя перенести в другую"
+//[MCannotMove]
+"Не удалось перенести"
+//[MOpUserArea]
+"смену области пользователя"
 
 // {$TOKEN} placeholders of fileSystem::information(): texts of DISK Commander
 // (https://github.com/Ptr314/dsk_commander, src/placeholders.h, src/i18n/ru_ru.ts)

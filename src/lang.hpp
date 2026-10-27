@@ -107,6 +107,11 @@ enum LngId : int
     MBadMask,
     MWriteDisabled,
     MCannotBackup,
+    MMoveToArea,
+    MSameArea,
+    MMoveArea,
+    MCannotMove,
+    MOpUserArea,
     // Labels of the {$TOKEN} placeholders in fileSystem::information() (info_tokens.hpp)
     MTok_AGAT_FONT_A7_CLASSIC,
     MTok_AGAT_FONT_A7_ENCHANCED,

@@ -204,6 +204,16 @@
 "Writing is disabled in the plugin settings"
 //[MCannotBackup]
 "Cannot make the backup copy"
+//[MMoveToArea]
+"Move %1 to user area %2?"
+//[MSameArea]
+"The files are in this user area already"
+//[MMoveArea]
+"A user area cannot be moved into another one"
+//[MCannotMove]
+"Cannot move"
+//[MOpUserArea]
+"changing user areas"
 
 // {$TOKEN} placeholders of fileSystem::information(): texts of DISK Commander
 // (https://github.com/Ptr314/dsk_commander, src/placeholders.h, src/i18n/ru_ru.ts)
