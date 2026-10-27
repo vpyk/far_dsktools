@@ -17,6 +17,11 @@
 static std::map<intptr_t, PluginPanel> g_Panels;
 static intptr_t g_NextHandle = 1;   // -1/-2 would clash with PANEL_STOP/PANEL_PASSIVE
 
+// Saves of every image by any panel, by name_key() of its path (sync_image()): exact even
+// where the file time is too coarse to tell two saves apart (FAT: 2 s; a raw image never
+// changes its size). The file time and size catch the changes made by other programs.
+static std::map<std::wstring, unsigned> g_SaveCounts;
+
 // ── Global plugin info (received via SetStartupInfoW) ──────────
 PluginStartupInfo  PSI = {};
 FarStandardFunctions FSF = {};
@@ -581,9 +586,13 @@ static const dsk_tools::DiskDefs &diskdefs()
 
 // Loads panel.hostPath as panel.formatId/typeId/fsId and mounts its filesystem.
 // Returns an error text, empty on success. Used to open an image and to reload it.
+static void remember_stamp(PluginPanel &panel);
+static void sync_image(PluginPanel &panel, bool report);
+
 static std::wstring mount_image(PluginPanel &panel)
 {
     std::string uPath = wide_to_utf8(panel.hostPath);
+    remember_stamp(panel);      // before reading: a change made meanwhile is seen next time
 
     auto img = dsk_tools::prepare_image(uPath, panel.formatId, panel.typeId, diskdefs());
     if (!img)
@@ -1029,6 +1038,7 @@ extern "C" intptr_t WINAPI GetFindDataW(struct GetFindDataInfo *Info)
     if (it == g_Panels.end()) return FALSE;
 
     auto &panel = it->second;
+    sync_image(panel, false);   // a redraw or Ctrl+R after the other panel saved the image
     size_t count = panel.files.size();
     if (count == 0)
     {
@@ -1409,6 +1419,8 @@ static std::wstring save_image(PluginPanel &panel)
         return panel.hostPath + L"\n" + last_error_text(err);
     }
     panel.filesystem->reset_changed();
+    ++g_SaveCounts[name_key(panel.hostPath)];
+    remember_stamp(panel);
     panel.infoValid = false;    // free space, file count
     return L"";
 }
@@ -1456,6 +1468,62 @@ static void discard_changes(PluginPanel &panel, bool report)
             p += d + L"/";
         set_dir(panel, p.c_str());
     }
+}
+
+// ── The image file changed on disk ─────────────────────────────
+// The same image may be open in both panels (or be written by another program), and every
+// panel holds its own copy in memory: one saving over the other's changes would lose them
+// (F6 between two panels of one image: the target saves the files, then the source saves
+// its copy without them). So before using its copy a panel checks that the file is as it
+// loaded or saved it last, and reloads it otherwise.
+
+static bool file_stamp(const std::wstring &path, FILETIME &time, unsigned long long &size)
+{
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &fad))
+        return false;
+    time = fad.ftLastWriteTime;
+    size = (static_cast<unsigned long long>(fad.nFileSizeHigh) << 32) | fad.nFileSizeLow;
+    return true;
+}
+
+static void remember_stamp(PluginPanel &panel)
+{
+    if (!file_stamp(panel.hostPath, panel.diskTime, panel.diskSize))
+        panel.diskSize = 0;
+    panel.saveCount = g_SaveCounts[name_key(panel.hostPath)];
+}
+
+// Reloads the image (back in the same directory) if the file is not as this panel left it
+static void sync_image(PluginPanel &panel, bool report)
+{
+    FILETIME time;
+    unsigned long long size;
+    if (!file_stamp(panel.hostPath, time, size))
+        return;                 // gone: the operation itself reports it
+    if (CompareFileTime(&time, &panel.diskTime) != 0 || size != panel.diskSize
+        || g_SaveCounts[name_key(panel.hostPath)] != panel.saveCount)
+        discard_changes(panel, report);
+}
+
+// Index in panel.files of the item named `name` (as the panel shows it), -1 if none
+static intptr_t name_index(const PluginPanel &panel, const std::wstring &name)
+{
+    for (size_t i = 0; i < panel.wideNames.size(); ++i)
+        if (panel.wideNames[i] == name)
+            return static_cast<intptr_t>(i);
+    return -1;
+}
+
+// Index in panel.files of an item FAR passed back: its UserData while the name there
+// still matches, otherwise (the image was reloaded since FAR got the list) by name
+static intptr_t item_index(const PluginPanel &panel, const PluginPanelItem &item)
+{
+    const std::wstring name = item.FileName ? item.FileName : L"";
+    intptr_t idx = reinterpret_cast<intptr_t>(item.UserData.Data);
+    if (idx >= 0 && static_cast<size_t>(idx) < panel.wideNames.size() && panel.wideNames[idx] == name)
+        return idx;
+    return name_index(panel, name);
 }
 
 // Can the operation `cap` be done on this image? Shows why not unless silent.
@@ -1768,10 +1836,9 @@ static bool copy_dialog(const GetFilesInfo *Info, PluginPanel &panel, std::wstri
     std::wstring prompt;
     if (Info->ItemsNumber == 1)
     {
-        intptr_t idx = reinterpret_cast<intptr_t>(Info->PanelItem[0].UserData.Data);
-        std::wstring name = (idx >= 0 && static_cast<size_t>(idx) < panel.wideNames.size())
-                          ? panel.wideNames[idx]
-                          : std::wstring(Info->PanelItem[0].FileName ? Info->PanelItem[0].FileName : L"");
+        intptr_t idx = item_index(panel, Info->PanelItem[0]);
+        std::wstring name = idx >= 0 ? panel.wideNames[idx]
+                                     : std::wstring(Info->PanelItem[0].FileName ? Info->PanelItem[0].FileName : L"");
         if (name.size() > 50)
             name = name.substr(0, 47) + L"...";
         prompt = msg(move ? MMoveTo : MCopyTo, { L"\"" + name + L"\"" });
@@ -1794,8 +1861,8 @@ static bool copy_dialog(const GetFilesInfo *Info, PluginPanel &panel, std::wstri
     bool areas = false;
     for (size_t i = 0; panel.cpmUsers && i < Info->ItemsNumber; ++i)
     {
-        intptr_t idx = reinterpret_cast<intptr_t>(Info->PanelItem[i].UserData.Data);
-        areas |= idx >= 0 && static_cast<size_t>(idx) < panel.files.size() && panel.files[idx].is_dir;
+        intptr_t idx = item_index(panel, Info->PanelItem[i]);
+        areas |= idx >= 0 && panel.files[idx].is_dir;
     }
     if (areas)
         builder.AddCheckbox(MCopyFlatAreas, &options.flatAreas);
@@ -1864,6 +1931,7 @@ extern "C" intptr_t WINAPI GetFilesW(struct GetFilesInfo *Info)
 
     auto &panel = it->second;
     const bool silent = (Info->OpMode & (OPM_SILENT | OPM_FIND | OPM_QUICKVIEW)) != 0;
+    sync_image(panel, !silent);
 
     // F6: extract, then delete from the image
     if (Info->Move && !check_writable(panel, !silent, dsk_tools::FSCaps::Delete, MOpDeleting))
@@ -1889,8 +1957,8 @@ extern "C" intptr_t WINAPI GetFilesW(struct GetFilesInfo *Info)
                      || typed.back() == L'\\' || typed.back() == L'/';
         if (!toFolder)
         {
-            intptr_t idx = reinterpret_cast<intptr_t>(Info->PanelItem[0].UserData.Data);
-            toFolder = idx < 0 || static_cast<size_t>(idx) >= panel.files.size() || panel.files[idx].is_dir;
+            intptr_t idx = item_index(panel, Info->PanelItem[0]);
+            toFolder = idx < 0 || panel.files[idx].is_dir;
         }
         if (toFolder)
             destDir = dest;
@@ -1915,8 +1983,8 @@ extern "C" intptr_t WINAPI GetFilesW(struct GetFilesInfo *Info)
         // Areas copied into one folder must not take the names of the selected files
         for (size_t i = 0; ctx.flatAreas && i < Info->ItemsNumber; ++i)
         {
-            intptr_t idx = reinterpret_cast<intptr_t>(Info->PanelItem[i].UserData.Data);
-            if (idx >= 0 && static_cast<size_t>(idx) < panel.files.size() && !panel.files[idx].is_dir)
+            intptr_t idx = item_index(panel, Info->PanelItem[i]);
+            if (idx >= 0 && !panel.files[idx].is_dir)
                 ctx.flatNames.insert(name_key(renameTo.empty() ? panel.wideNames[idx] : renameTo));
         }
     }
@@ -1926,8 +1994,8 @@ extern "C" intptr_t WINAPI GetFilesW(struct GetFilesInfo *Info)
     for (size_t i = 0; i < Info->ItemsNumber && !cancelled; ++i)
     {
         auto &item = Info->PanelItem[i];
-        intptr_t idx = reinterpret_cast<intptr_t>(item.UserData.Data);
-        if (idx < 0 || static_cast<size_t>(idx) >= panel.files.size())
+        intptr_t idx = item_index(panel, item);
+        if (idx < 0)
             continue;
 
         Outcome o = extract_item(ctx, panel.files[idx],
@@ -1949,7 +2017,7 @@ extern "C" intptr_t WINAPI GetFilesW(struct GetFilesInfo *Info)
         std::vector<std::pair<dsk_tools::UniversalFile, std::wstring>> victims;
         for (size_t i : extracted)
         {
-            auto idx = reinterpret_cast<intptr_t>(Info->PanelItem[i].UserData.Data);
+            intptr_t idx = item_index(panel, Info->PanelItem[i]);
             victims.emplace_back(panel.files[idx], panel.wideNames[idx]);
         }
         for (const auto &v : victims)
@@ -2036,6 +2104,7 @@ extern "C" intptr_t WINAPI DeleteFilesW(const struct DeleteFilesInfo *Info)
 
     auto &panel = it->second;
     const bool silent = (Info->OpMode & OPM_SILENT) != 0;
+    sync_image(panel, !silent);
     if (!check_writable(panel, !silent, dsk_tools::FSCaps::Delete, MOpDeleting))
         return FALSE;
 
@@ -2043,8 +2112,8 @@ extern "C" intptr_t WINAPI DeleteFilesW(const struct DeleteFilesInfo *Info)
     Victims victims;
     for (size_t i = 0; i < Info->ItemsNumber; ++i)
     {
-        intptr_t idx = reinterpret_cast<intptr_t>(Info->PanelItem[i].UserData.Data);
-        if (idx >= 0 && static_cast<size_t>(idx) < panel.files.size())
+        intptr_t idx = item_index(panel, Info->PanelItem[i]);
+        if (idx >= 0)
             victims.emplace_back(panel.files[idx], panel.wideNames[idx]);
     }
 
@@ -2110,6 +2179,7 @@ extern "C" intptr_t WINAPI MakeDirectoryW(struct MakeDirectoryInfo *Info)
 
     auto &panel = it->second;
     const bool silent = (Info->OpMode & OPM_SILENT) != 0;
+    sync_image(panel, !silent);
     if (!check_writable(panel, !silent,
                         panel.cpmUsers ? dsk_tools::FSCaps::Add : dsk_tools::FSCaps::MkDir,
                         MOpDirectories))
@@ -2188,6 +2258,7 @@ extern "C" intptr_t WINAPI PutFilesW(const struct PutFilesInfo *Info)
 
     auto &panel = it->second;
     const bool silent = (Info->OpMode & (OPM_SILENT | OPM_FIND)) != 0;
+    sync_image(panel, !silent);
     if (!check_writable(panel, !silent, dsk_tools::FSCaps::Add, MOpAdding))
         return FALSE;
 
@@ -2256,9 +2327,12 @@ static std::wstring current_item(HANDLE hPanel, intptr_t &idx)
     return gpi.Item->FileName;
 }
 
-// Re-reads the panel and puts the cursor on `name`
+// Re-reads the panel and puts the cursor on `name`; the other panel is re-read as well,
+// as FAR does after its own file operations (it may show the same image)
 static void update_panel_cursor(HANDLE hPanel, const std::wstring &name)
 {
+    PSI.PanelControl(PANEL_PASSIVE, FCTL_UPDATEPANEL, 1, nullptr);
+    PSI.PanelControl(PANEL_PASSIVE, FCTL_REDRAWPANEL, 0, nullptr);
     PSI.PanelControl(hPanel, FCTL_UPDATEPANEL, 1, nullptr);
     PanelInfo pi = {};
     pi.StructSize = sizeof(PanelInfo);
@@ -2283,10 +2357,11 @@ static void update_panel_cursor(HANDLE hPanel, const std::wstring &name)
 
 static void rename_item(HANDLE hPanel, PluginPanel &panel)
 {
+    sync_image(panel, true);
     intptr_t idx = -1;
     std::wstring oldName = current_item(hPanel, idx);
-    if (oldName.empty() || oldName == L".." || idx < 0 || static_cast<size_t>(idx) >= panel.files.size()
-        || panel.wideNames[idx] != oldName)
+    idx = oldName == L".." ? -1 : name_index(panel, oldName);
+    if (idx < 0)
         return;
     const dsk_tools::UniversalFile uf = panel.files[idx];
 
@@ -2475,10 +2550,11 @@ static Outcome write_node(OpContext &ctx, const TreeNode &node, const std::wstri
 
 static void copy_item(HANDLE hPanel, PluginPanel &panel)
 {
+    sync_image(panel, true);
     intptr_t idx = -1;
     std::wstring oldName = current_item(hPanel, idx);
-    if (oldName.empty() || oldName == L".." || idx < 0 || static_cast<size_t>(idx) >= panel.files.size()
-        || panel.wideNames[idx] != oldName)
+    idx = oldName == L".." ? -1 : name_index(panel, oldName);
+    if (idx < 0)
         return;
     const dsk_tools::UniversalFile uf = panel.files[idx];
     auto &fs = *panel.filesystem;

@@ -38,6 +38,11 @@ struct PluginPanel
     unsigned long long                            freeSize  = 0;    // OpenPanelInfo::FreeSize
 
     bool                                          backedUp  = false;    // <image>.bak made for this panel
+
+    // The image file as this panel loaded or saved it last (sync_image())
+    FILETIME                                      diskTime  = {};
+    unsigned long long                            diskSize  = 0;
+    unsigned                                      saveCount = 0;    // g_SaveCounts of the image then
 };
 
 // ── Plugin globals ─────────────────────────────────────────────
