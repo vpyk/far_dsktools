@@ -253,6 +253,92 @@ static dsk_tools::FileDate host_date(const std::wstring &path)
     return d;
 }
 
+// ── Settings (F9 > Plugins configuration > DskTools) ───────────
+// Kept in FAR's profile under the plugin GUID. The defaults are the behaviour before
+// there were settings.
+
+struct Settings
+{
+    bool         openOnEnter = true;    // AnalyseW claims images on Enter / Ctrl+PgDn
+    std::wstring mask        = L"*";    // ... only files matching this FAR mask
+    bool         allowWrite  = true;    // otherwise every image is read-only
+    bool         backup      = false;   // <image>.bak before the first change in a panel
+};
+static Settings g_Settings;
+
+namespace
+{
+    // The plugin's own settings root for the time of one read or write
+    class PluginSettings
+    {
+    public:
+        PluginSettings()
+        {
+            FarSettingsCreate create = { sizeof(FarSettingsCreate), PLUGIN_UUID, INVALID_HANDLE_VALUE };
+            if (PSI.SettingsControl(INVALID_HANDLE_VALUE, SCTL_CREATE, PSL_ROAMING, &create))
+                handle = create.Handle;
+        }
+        ~PluginSettings()
+        {
+            if (handle != INVALID_HANDLE_VALUE)
+                PSI.SettingsControl(handle, SCTL_FREE, 0, nullptr);
+        }
+        void get(const wchar_t *name, bool &value) const
+        {
+            FarSettingsItem item = { sizeof(FarSettingsItem), 0, name, FST_QWORD, {} };
+            if (handle != INVALID_HANDLE_VALUE && PSI.SettingsControl(handle, SCTL_GET, 0, &item))
+                value = item.Number != 0;
+        }
+        void get(const wchar_t *name, std::wstring &value) const
+        {
+            FarSettingsItem item = { sizeof(FarSettingsItem), 0, name, FST_STRING, {} };
+            if (handle != INVALID_HANDLE_VALUE && PSI.SettingsControl(handle, SCTL_GET, 0, &item) && item.String)
+                value = item.String;
+        }
+        void set(const wchar_t *name, bool value) const
+        {
+            FarSettingsItem item = { sizeof(FarSettingsItem), 0, name, FST_QWORD, {} };
+            item.Number = value ? 1 : 0;
+            if (handle != INVALID_HANDLE_VALUE)
+                PSI.SettingsControl(handle, SCTL_SET, 0, &item);
+        }
+        void set(const wchar_t *name, const std::wstring &value) const
+        {
+            FarSettingsItem item = { sizeof(FarSettingsItem), 0, name, FST_STRING, {} };
+            item.String = value.c_str();
+            if (handle != INVALID_HANDLE_VALUE)
+                PSI.SettingsControl(handle, SCTL_SET, 0, &item);
+        }
+    private:
+        HANDLE handle = INVALID_HANDLE_VALUE;
+    };
+}
+
+static void load_settings()
+{
+    PluginSettings s;
+    s.get(L"OpenOnEnter", g_Settings.openOnEnter);
+    s.get(L"Mask",        g_Settings.mask);
+    s.get(L"AllowWrite",  g_Settings.allowWrite);
+    s.get(L"Backup",      g_Settings.backup);
+}
+
+static void save_settings()
+{
+    PluginSettings s;
+    s.set(L"OpenOnEnter", g_Settings.openOnEnter);
+    s.set(L"Mask",        g_Settings.mask);
+    s.set(L"AllowWrite",  g_Settings.allowWrite);
+    s.set(L"Backup",      g_Settings.backup);
+}
+
+// Does the file name (without the path) match the mask of the settings?
+static bool matches_mask(const std::wstring &path)
+{
+    std::wstring name = extract_filename(path);
+    return FSF.ProcessName(g_Settings.mask.c_str(), &name[0], 0, PN_CMPNAMELIST | PN_SKIPPATH) != 0;
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  Refresh directory listing after navigation
 // ═══════════════════════════════════════════════════════════════
@@ -530,6 +616,8 @@ static std::wstring mount_image(PluginPanel &panel)
 static std::wstring read_only_reason(PluginPanel &panel)
 {
     using dsk_tools::FSCaps;
+    if (!g_Settings.allowWrite)
+        return msg(MWriteDisabled);
     if (!static_cast<bool>(panel.filesystem->get_caps() & FSCaps::Add))
         return msg(MFsReadOnly, { fs_name(panel.filesystem->get_fs()) });
     if (panel.formatId != "FILE_RAW_MSB")
@@ -648,6 +736,7 @@ extern "C" void WINAPI SetStartupInfoW(const struct PluginStartupInfo *Info)
 {
     PSI = *Info;
     FSF = *Info->FSF;
+    load_settings();
 }
 
 extern "C" void WINAPI GetPluginInfoW(struct PluginInfo *Info)
@@ -680,6 +769,9 @@ extern "C" void WINAPI GetPluginInfoW(struct PluginInfo *Info)
 extern "C" HANDLE WINAPI AnalyseW(const struct AnalyseInfo *Info)
 {
     if (!Info->FileName || !Info->FileName[0])
+        return nullptr;
+    // Only the opening by Enter / Ctrl+PgDn obeys these; dsk: and F11 open any file
+    if (!g_Settings.openOnEnter || !matches_mask(Info->FileName))
         return nullptr;
 
     DetectedImage di;
@@ -1284,6 +1376,15 @@ static std::wstring save_image(PluginPanel &panel)
     auto r = writer->write(buffer);
     if (!r)
         return describe(msg(MCannotBuildImage), r);
+
+    // The image as it was before the first change made in this panel
+    if (g_Settings.backup && !panel.backedUp)
+    {
+        std::wstring bak = panel.hostPath + L".bak";
+        if (!CopyFileW(panel.hostPath.c_str(), bak.c_str(), FALSE))
+            return msg(MCannotBackup) + (L"\n" + bak + L"\n" + last_error_text(GetLastError()));
+        panel.backedUp = true;
+    }
 
     std::wstring tmp = panel.hostPath + L".dsktools-tmp";
     HANDLE h = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
@@ -2488,6 +2589,41 @@ extern "C" intptr_t WINAPI ProcessPanelInputW(const struct ProcessPanelInputInfo
 extern "C" void WINAPI ClosePanelW(const struct ClosePanelInfo *Info)
 {
     g_Panels.erase(reinterpret_cast<intptr_t>(Info->hPanel));
+}
+
+// ── Settings dialog ────────────────────────────────────────────
+
+extern "C" intptr_t WINAPI ConfigureW(const struct ConfigureInfo * /*Info*/)
+{
+    static const UUID PluginUuid = PLUGIN_UUID;
+    static const UUID DialogUuid = CONFIG_DIALOG_UUID;
+
+    Settings edited = g_Settings;
+    for (;;)
+    {
+        PluginDialogBuilder builder(PSI, PluginUuid, DialogUuid, L"DskTools", nullptr);
+        builder.AddCheckbox(MCfgOpenOnEnter, &edited.openOnEnter);
+        builder.AddText(MCfgMask);
+        builder.AddEditField(edited.mask, 52, L"Masks");
+        builder.AddSeparator();
+        builder.AddCheckbox(MCfgAllowWrite, &edited.allowWrite);
+        builder.AddCheckbox(MCfgBackup, &edited.backup);
+        builder.AddOKCancel(MOk, MDialogCancel);
+        if (!builder.ShowDialog())
+            return FALSE;
+
+        if (edited.mask.find_first_not_of(L' ') == std::wstring::npos)
+            edited.mask = L"*";
+        if (FSF.ProcessName(edited.mask.c_str(), nullptr, 0, PN_CHECKMASK))
+            break;
+        show_error(msg(MBadMask) + (L"\n" + edited.mask));
+    }
+
+    g_Settings = edited;
+    save_settings();
+    for (auto &p : g_Panels)
+        p.second.infoValid = false;    // "Writing" in the info panel
+    return TRUE;
 }
 
 // ── Optional exports ───────────────────────────────────────────

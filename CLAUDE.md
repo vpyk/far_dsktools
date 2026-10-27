@@ -30,10 +30,10 @@ FAR3 file system plugin (плагин файловой системы) — a sha
 
 | File | Purpose |
 |------|---------|
-| `src/plugin.cpp` | All 19 FAR3 exports + internal state |
+| `src/plugin.cpp` | All 20 FAR3 exports + internal state |
 | `src/plugin.hpp` | `PluginPanel` struct per-panel state, extern globals |
 | `src/plugin.def` | MSVC linker export list — **required**, otherwise zero exports |
-| `src/uuid.hpp` | Plugin GUID as `{ DWORD, WORD, WORD, BYTE[8] }` — not a string |
+| `src/uuid.hpp` | Plugin GUID as `{ DWORD, WORD, WORD, BYTE[8] }` — not a string; GUIDs of the copy and settings dialogs |
 | `src/lang.hpp` | `enum LngId` — message ids, the order of strings in the `.lng` files |
 | `src/DskToolsEng.lng`, `src/DskToolsRus.lng` | Interface texts (UTF-8 with BOM), each string preceded by its label `//[Mxxx]` |
 | `src/DskToolsEng.hlf`, `src/DskToolsRus.hlf` | Help (F1): one topic `@Contents` — what the plugin does and its keys (UTF-8 with BOM; `#…#` highlights, keys right-aligned as in FAR's own help) |
@@ -51,7 +51,7 @@ FAR3 file system plugin (плагин файловой системы) — a sha
 
 ## Critical FAR3 API details
 
-- **`.def` file is mandatory** — MSVC does not export `extern "C"` functions without `__declspec(dllexport)` or a `.def` file. All 19 exports must be listed.
+- **`.def` file is mandatory** — MSVC does not export `extern "C"` functions without `__declspec(dllexport)` or a `.def` file. All 20 exports must be listed.
 - **`PluginMenuItem.Guids` must not be `nullptr` when `Count > 0`** — FAR3 dereferences `Guids[i]` in `uuid::str()` during cache save without a null check. Crash: `STATUS_ACCESS_VIOLATION` at `uuid::str+0x61`.
 - **`PluginPanelItem` has flat fields** (`FileName`, `FileAttributes`), not a nested `FindData` sub-struct (FAR2/far2l pattern).
 - **`GlobalInfo::Version` and `::MinFarVersion` are `struct VersionInfo`**, not `DWORD`. Use `MAKEFARVERSION()` macro.
@@ -63,6 +63,7 @@ FAR3 file system plugin (плагин файловой системы) — a sha
 - **Copy dialogs**: copying *into* a plugin FAR shows its own copy dialog, then `PutFiles`; copying *out of* a plugin it calls `GetFiles` with the other panel's path without a dialog. After `PutFiles` with `Move` FAR does **not** delete the sources — the plugin must. Plugin→plugin copies go through a temp folder: `GetFiles(OPM_SILENT)` + `PutFiles` (+ `DeleteFiles` for move).
 - **Rename (Shift+F6), copy in place (Shift+F5)**: without `OPIF_REALNAMES` FAR turns Shift+F6/Shift+F5 on a plugin panel into F6/F5 (`FileList::ProcessKey` → `ProcessCopyKeys`) — there is no rename export. The plugin catches both keys in `ProcessPanelInputW` (`is_shift_key()`), always returns `TRUE` for them, renames the current item (`rename_item()`: `FCTL_GETCURRENTPANELITEM`, `PSI.InputBox`, `rename_file`, save) and puts the cursor on the new name (`FCTL_UPDATEPANEL` + `FCTL_REDRAWPANEL` with the item's index in FAR's list). The `..` item FAR adds has `UserData` 0 like the first file, so it is recognized by name. `OpenPanelInfo::KeyBar` relabels plain F6 from FAR's "RenMov" to "Move" (`MKeyBarMove`).
 - **Type column**: for filesystems with `FSCaps::Types` (CP/M, DOS 3.3, FAT, ProDOS, Onix, Iskra-226, FIL — exactly those that fill `UniversalFile::type_label`) `GetOpenPanelInfoW` returns a `PanelModesArray` that overrides only Full (3: `N,C0,S,D,T`) and Wide (4: `N,C0,S`) with a 4 character `C0` column titled `MColumnType`; modes without `ColumnTypes` stay FAR's own (`FileList::SetViewMode`). `GetFindDataW` puts `type_label` into `CustomColumnData[0]`.
+- **Settings** (F9 > Options > Plugins configuration > DskTools, or Alt+Shift+F9 on the panel → `ConfigureW`, registered by `PluginInfo::PluginConfig`): `Settings g_Settings`, read in `SetStartupInfoW` (`load_settings()`) and written by the dialog (`save_settings()`) through `PSI.SettingsControl` with the plugin GUID, `PSL_ROAMING`, root 0: `OpenOnEnter`, `Mask`, `AllowWrite`, `Backup`. Defaults keep the behaviour from before the settings existed. `OpenOnEnter`/`Mask` (FAR mask, `FSF.ProcessName(PN_CMPNAMELIST)`, checked with `PN_CHECKMASK` before saving) apply only to `AnalyseW` — `dsk:` and F11 open any file. `AllowWrite` off makes `read_only_reason()` refuse every write. `Backup` makes `save_image()` copy the image to `<image>.bak` (overwriting an old one) before the first save in a panel (`PluginPanel::backedUp`); if that fails, the save fails and the changes are discarded.
 - **Help (F1)**: on a plugin panel FAR opens the topic `@Contents` of the `.hlf` next to the DLL in its help language (`FileList::PluginPanelHelp`); nothing to export. `.PluginContents=` names the plugin in FAR's list of plugin help (Shift+F1 in the plugins menu).
 - **Info panel (Ctrl+L)**: `OpenPanelInfo::InfoLines` must stay valid after `GetOpenPanelInfoW` returns, and FAR calls it on every redraw — so `build_info()` builds the lines once into `PluginPanel::infoLines` (texts in a `std::deque`, whose elements do not move) and only again after `mount_image()` or a save (`infoValid`). Groups: the image (file, format, type, filesystem, volume, writing allowed / `read_only_reason()`), the space from `get_stats()` (CP/M, FAT, Onix, RT-11; also `OpenPanelInfo::FreeSize`), and `fileSystem::information()`: its lines are `Label: value`, `Group:` (a separator) or plain text, labelled with `{$TOKEN}` placeholders that DISK Commander fills in. `replace_tokens()` takes their texts from the `.lng` files (`MTok_*`, `src/info_tokens.hpp`: 246 tokens of the library with English and Russian texts from DISK Commander's `src/placeholders.h` and `src/i18n/ru_ru.ts`); an unknown token is shown by its name.
 - **Handle values**: `OpenW` returns `nullptr` on failure (not `INVALID_HANDLE_VALUE`). Panel handles count up from 1 — `(HANDLE)-1`/`-2` are `PANEL_STOP`/`PANEL_PASSIVE`, and returning `PANEL_STOP` from `OPEN_ANALYSE` aborts opening.
@@ -115,6 +116,6 @@ Release build links `MSVCP140.dll`, `VCRUNTIME140.dll` (x64 also `VCRUNTIME140_1
 
 - Run FAR with `/debug` flag to see plugin loading errors
 - Check FAR crash logs in `%APPDATA%\Far Manager\Profile\CrashLogs\`
-- Verify DLL exports with `dumpbin /EXPORTS` (VS tool) — all 19 must be present
+- Verify DLL exports with `dumpbin /EXPORTS` (VS tool) — all 20 must be present
 - Check DLL dependencies with `dumpbin /DEPENDENTS` — missing runtime DLLs silently prevent loading
 - The `.def` file must be in `add_library()` for CMake to pass it to the linker

@@ -36,6 +36,8 @@ struct PluginPanel
     std::deque<std::wstring>                      infoTexts;        // what infoLines point to
     std::vector<InfoPanelLine>                    infoLines;
     unsigned long long                            freeSize  = 0;    // OpenPanelInfo::FreeSize
+
+    bool                                          backedUp  = false;    // <image>.bak made for this panel
 };
 
 // ── Plugin globals ─────────────────────────────────────────────

@@ -16,5 +16,6 @@ EXPORTS
     ProcessHostFileW
     ProcessPanelInputW
     ProcessPanelEventW
+    ConfigureW
     ClosePanelW
     ExitFARW

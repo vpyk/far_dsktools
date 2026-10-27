@@ -188,6 +188,22 @@
 "Занято"
 //[MInfoFree]
 "Свободно"
+//[MCfgOpenOnEnter]
+"Открывать образы по &Enter и Ctrl+PgDn"
+//[MCfgMask]
+"Только &файлы по маске:"
+//[MCfgAllowWrite]
+"Разрешить &запись в образы"
+//[MCfgBackup]
+"Создавать &резервную копию (.bak) перед первым изменением"
+//[MOk]
+"OK"
+//[MBadMask]
+"Неверная маска файлов"
+//[MWriteDisabled]
+"Запись отключена в настройках плагина"
+//[MCannotBackup]
+"Не удалось создать резервную копию"
 
 // {$TOKEN} placeholders of fileSystem::information(): texts of DISK Commander
 // (https://github.com/Ptr314/dsk_commander, src/placeholders.h, src/i18n/ru_ru.ts)

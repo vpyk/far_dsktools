@@ -188,6 +188,22 @@
 "Used"
 //[MInfoFree]
 "Free"
+//[MCfgOpenOnEnter]
+"Open disk images by &Enter and Ctrl+PgDn"
+//[MCfgMask]
+"Only files &matching:"
+//[MCfgAllowWrite]
+"Allow &writing into disk images"
+//[MCfgBackup]
+"Make a &backup (.bak) before the first change"
+//[MOk]
+"OK"
+//[MBadMask]
+"Invalid file mask"
+//[MWriteDisabled]
+"Writing is disabled in the plugin settings"
+//[MCannotBackup]
+"Cannot make the backup copy"
 
 // {$TOKEN} placeholders of fileSystem::information(): texts of DISK Commander
 // (https://github.com/Ptr314/dsk_commander, src/placeholders.h, src/i18n/ru_ru.ts)
