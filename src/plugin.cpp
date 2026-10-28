@@ -262,10 +262,36 @@ static dsk_tools::FileDate host_date(const std::wstring &path)
 // Kept in FAR's profile under the plugin GUID. The defaults are the behaviour before
 // there were settings.
 
+// Filesystems AnalyseW may claim, as detect_fdd_type() names them; in the order of the
+// dialog: two columns, the first FS_LEFT_COLUMN in the left one
+struct FsSwitch
+{
+    const char    *ids[3];
+    const wchar_t *key;     // settings name
+    LngId          label;
+};
+static const FsSwitch FS_SWITCHES[] =
+{
+    { { "FILESYSTEM_FAT" },                                                     L"OpenFAT",      MCfgFsFat },
+    { { "FILESYSTEM_CPM_RAW", "FILESYSTEM_CPM_DOS", "FILESYSTEM_CPM_PRODOS" }, L"OpenCPM",      MCfgFsCpm },
+    { { "FILESYSTEM_RT11" },                                                    L"OpenRT11",     MCfgFsRt11 },
+    { { "FILESYSTEM_DOS33" },                                                   L"OpenDOS33",    MCfgFsDos33 },
+    { { "FILESYSTEM_FIL" },                                                     L"OpenFIL",      MCfgFsFil },
+    { { "FILESYSTEM_PRODOS" },                                                  L"OpenProDOS",   MCfgFsProdos },
+    { { "FILESYSTEM_SPRITE_OS" },                                               L"OpenSpriteOS", MCfgFsSprite },
+    { { "FILESYSTEM_ONIX" },                                                    L"OpenOnix",     MCfgFsOnix },
+    { { "FILESYSTEM_ISKRA-226" },                                               L"OpenIskra226", MCfgFsIskra },
+};
+static const size_t FS_COUNT = ARRAYSIZE(FS_SWITCHES);
+static const size_t FS_LEFT_COLUMN = 5;
+static_assert(FS_COUNT == 9, "a filesystem added: give it a default in Settings::openFs");
+
 struct Settings
 {
     bool         openOnEnter = true;    // AnalyseW claims images on Enter / Ctrl+PgDn
     std::wstring mask        = L"*";    // ... only files matching this FAR mask
+    bool         openFs[FS_COUNT] = { true, true, true, true, true, true, true, true, true };
+                                        // ... and only these filesystems (FS_SWITCHES)
     bool         allowWrite  = true;    // otherwise every image is read-only
     bool         backup      = false;   // <image>.bak before the first change in a panel
 };
@@ -324,6 +350,8 @@ static void load_settings()
     PluginSettings s;
     s.get(L"OpenOnEnter", g_Settings.openOnEnter);
     s.get(L"Mask",        g_Settings.mask);
+    for (size_t i = 0; i < FS_COUNT; ++i)
+        s.get(FS_SWITCHES[i].key, g_Settings.openFs[i]);
     s.get(L"AllowWrite",  g_Settings.allowWrite);
     s.get(L"Backup",      g_Settings.backup);
 }
@@ -333,8 +361,24 @@ static void save_settings()
     PluginSettings s;
     s.set(L"OpenOnEnter", g_Settings.openOnEnter);
     s.set(L"Mask",        g_Settings.mask);
+    for (size_t i = 0; i < FS_COUNT; ++i)
+        s.set(FS_SWITCHES[i].key, g_Settings.openFs[i]);
     s.set(L"AllowWrite",  g_Settings.allowWrite);
     s.set(L"Backup",      g_Settings.backup);
+}
+
+// May AnalyseW claim an image of this filesystem? A filesystem the table does not know (a
+// newer dsk_tools) is allowed; none (a known format with an unknown filesystem) is not:
+// OpenW could only report "Unsupported filesystem", while FAR may hand the file elsewhere
+static bool filesystem_enabled(const std::string &fsId)
+{
+    if (fsId.empty())
+        return false;
+    for (size_t i = 0; i < FS_COUNT; ++i)
+        for (const char *id : FS_SWITCHES[i].ids)
+            if (id && fsId == id)
+                return g_Settings.openFs[i];
+    return true;
 }
 
 // Does the file name (without the path) match the mask of the settings?
@@ -783,8 +827,9 @@ extern "C" HANDLE WINAPI AnalyseW(const struct AnalyseInfo *Info)
     if (!g_Settings.openOnEnter || !matches_mask(Info->FileName))
         return nullptr;
 
+    // A file not claimed here goes on to other plugins, then to FAR's own Enter
     DetectedImage di;
-    if (!detect_image(Info->FileName, di, nullptr))
+    if (!detect_image(Info->FileName, di, nullptr) || !filesystem_enabled(di.fsId))
         return nullptr;
 
     intptr_t h = g_NextAnalyseHandle++;
@@ -2925,6 +2970,15 @@ extern "C" intptr_t WINAPI ConfigureW(const struct ConfigureInfo * /*Info*/)
         builder.AddCheckbox(MCfgOpenOnEnter, &edited.openOnEnter);
         builder.AddText(MCfgMask);
         builder.AddEditField(edited.mask, 52, L"Masks");
+        builder.AddText(MCfgFilesystems);
+        builder.StartColumns();
+        for (size_t i = 0; i < FS_COUNT; ++i)
+        {
+            if (i == FS_LEFT_COLUMN)
+                builder.ColumnBreak();
+            builder.AddCheckbox(FS_SWITCHES[i].label, &edited.openFs[i]);
+        }
+        builder.EndColumns();
         builder.AddSeparator();
         builder.AddCheckbox(MCfgAllowWrite, &edited.allowWrite);
         builder.AddCheckbox(MCfgBackup, &edited.backup);

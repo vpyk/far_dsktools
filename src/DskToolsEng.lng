@@ -196,6 +196,26 @@
 "Allow &writing into disk images"
 //[MCfgBackup]
 "Make a &backup (.bak) before the first change"
+//[MCfgFilesystems]
+"Open these filesystems:"
+//[MCfgFsFat]
+"FAT"
+//[MCfgFsCpm]
+"CP/M"
+//[MCfgFsRt11]
+"RT-11"
+//[MCfgFsDos33]
+"DOS 3.3 (Agat, Apple II)"
+//[MCfgFsFil]
+"FIL (an Agat file)"
+//[MCfgFsProdos]
+"ProDOS"
+//[MCfgFsSprite]
+"Sprite OS"
+//[MCfgFsOnix]
+"Onix"
+//[MCfgFsIskra]
+"Iskra-226"
 //[MOk]
 "OK"
 //[MBadMask]
