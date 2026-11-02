@@ -2524,16 +2524,13 @@ static Outcome read_node(OpContext &ctx, TreeNode &node, const std::wstring &nam
     return result;
 }
 
-// The source entry as put_file/mkdir take it for a copy named `name`: marked as coming from
-// this filesystem, so attributes, dates and the CP/M user come from its metadata (CP/M,
-// Sprite OS and Iskra-226 dir() leave uf.fs unset). Under a new name without original_name,
-// from which FAT and RT-11 would take the old one; entries inside a copied folder keep
-// it and so their names byte for byte.
-static dsk_tools::UniversalFile copy_proto(dsk_tools::fileSystem &fs, const dsk_tools::UniversalFile &src,
-                                           const std::wstring &name)
+// The source entry as put_file/mkdir take it for a copy named `name`: attributes, dates and
+// the CP/M user come from its metadata. Under a new name without original_name, from which
+// FAT and RT-11 would take the old one; entries inside a copied folder keep it and so
+// their names byte for byte.
+static dsk_tools::UniversalFile copy_proto(const dsk_tools::UniversalFile &src, const std::wstring &name)
 {
     dsk_tools::UniversalFile uf = src;
-    uf.fs = fs.get_fs();
     if (wide_to_utf8(name) != src.name)
     {
         uf.name = wide_to_utf8(name);
@@ -2570,7 +2567,7 @@ static Outcome write_node(OpContext &ctx, const TreeNode &node, const std::wstri
     if (!node.uf.is_dir)
     {
         auto r = dos33 ? fs.put_file(node.uf, "", node.data, false)
-                       : fs.put_file(copy_proto(fs, node.uf, name), add_format(fs), node.data, replace);
+                       : fs.put_file(copy_proto(node.uf, name), add_format(fs), node.data, replace);
         if (!r)
             return fails_before_change(r) ? op_error(ctx, name, name_error(panel, r, msg(MCannotWrite)))
                                           : op_broken(ctx, name, name_error(panel, r, msg(MCannotWrite)));
@@ -2578,8 +2575,8 @@ static Outcome write_node(OpContext &ctx, const TreeNode &node, const std::wstri
         return Outcome::Ok;
     }
 
-    // DOS 3.3 mkdir in native mode takes a wrong name from the metadata: give it a plain one
-    dsk_tools::UniversalFile proto = copy_proto(fs, node.uf, name), created, dir;
+    // DOS 3.3 mkdir in native mode takes the source's name from the metadata: give it the new one
+    dsk_tools::UniversalFile proto = copy_proto(node.uf, name), created, dir;
     if (dos33)
     {
         proto = dsk_tools::UniversalFile{};
