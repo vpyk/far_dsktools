@@ -26,6 +26,7 @@ struct Geometry
     std::vector<unsigned> skewtab;
 
     unsigned image_size() const { return heads * tracks * sectrk * seclen; }
+    unsigned data_offset() const { return boottrk * heads * sectrk * seclen; }   // block 0
     // The values fsCPM::fill_dpb() derives from it
     unsigned dsm() const;
     unsigned exm() const;
@@ -91,8 +92,12 @@ struct Found
 bool find(const std::string &utf8Path, const uint8_t *boot, size_t bootSize, uint64_t fileSize,
           const Geometry *standard, const dsk_tools::DiskDefs &library, Found &out);
 
-// Every block of the file's directory entries lies on the disk and outside the directory:
-// fsCPM reads a block past the end without a check
-bool blocks_valid(const dsk_tools::UniversalFile &uf, unsigned dsm, unsigned dirBlocks);
+// Every block of the file's directory entries lies outside the directory and not past
+// `lastBlock` (DSM, or the last block a short image file holds): fsCPM reads a block past
+// the end of the image without a check. `dsm` tells one-byte block numbers from two-byte.
+bool blocks_valid(const dsk_tools::UniversalFile &uf, unsigned dsm, unsigned dirBlocks, unsigned lastBlock);
+
+// The last block a file of `fileSize` bytes holds whole; -1 when it does not reach block 0
+long long last_block_in_file(const Geometry &g, uint64_t fileSize);
 
 }

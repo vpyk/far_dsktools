@@ -26,6 +26,8 @@
 "The image file is read-only"
 //[MImageHasHeader]
 "The image file has a header or a non-standard size"
+//[MImageShort]
+"The image file is shorter than the disk (its empty end is cut off)"
 //[MGeoGuessedRO]
 "The CP/M geometry was found by the directory, the disk does not state it"
 //[MGeoDiffersRO]
@@ -33,7 +35,7 @@
 //[MDirDamaged]
 "The directory looks damaged"
 //[MDamagedEntry]
-"Damaged directory entry: its blocks lie outside the disk"
+"Damaged directory entry: its blocks lie outside the image"
 //[MFsNoSupport]
 "%1 does not support %2"
 //[MOpDeleting]

@@ -18,6 +18,7 @@ enum LngId : int
     MCannotReadAttributes,
     MImageReadOnly,
     MImageHasHeader,
+    MImageShort,
     MGeoGuessedRO,
     MGeoDiffersRO,
     MDirDamaged,

@@ -120,9 +120,11 @@ bool read_boot_dpb(const uint8_t *b, size_t bootSize, uint64_t fileSize, BootDpb
     g.boottrk   = off;
     if (spt * 128 != sec * g.seclen || off >= g.tracks || g.blocksize < g.seclen)
         return false;
-    // The image must hold the whole disk. A file 256 bytes longer is taken by the raw
-    // loader for one with a header, which would shift every sector
-    if (fileSize < g.image_size() || fileSize == g.image_size() + 256u)
+    // A file 256 bytes longer is taken by the raw loader for one with a header, which
+    // would shift every sector. A shorter one (an empty end cut off) must hold the
+    // directory at least: the loader fills the rest with E5
+    if (fileSize == g.image_size() + 256u
+        || fileSize < static_cast<uint64_t>(g.data_offset()) + g.dir_blocks() * g.blocksize)
         return false;
     // Block numbers of one byte or two follow from DSM: the same on both sides, or fsCPM
     // reads the directory wrong
@@ -155,7 +157,7 @@ static bool name_valid(const dsk_tools::CPM_DIR_ENTRY &e)
 }
 
 // The block numbers of one entry, as fsCPM::load_file() reads them
-static bool entry_blocks_valid(const dsk_tools::CPM_DIR_ENTRY &e, unsigned dsm, unsigned dirBlocks)
+static bool entry_blocks_valid(const dsk_tools::CPM_DIR_ENTRY &e, unsigned dsm, unsigned dirBlocks, unsigned lastBlock)
 {
     const bool wide = dsm >= 256;
     for (unsigned i = 0; i < 16; i += wide ? 2 : 1)
@@ -163,7 +165,7 @@ static bool entry_blocks_valid(const dsk_tools::CPM_DIR_ENTRY &e, unsigned dsm, 
         const unsigned al = wide ? e.AL[i] | (e.AL[i + 1] << 8) : e.AL[i];
         if (al == 0 || al == 0xE5 || al == 0xE5E5)
             continue;
-        if (al > dsm || al < dirBlocks)
+        if (al > lastBlock || al < dirBlocks)
             return false;
     }
     return true;
@@ -187,18 +189,25 @@ Score score_directory(const std::vector<dsk_tools::UniversalFile> &files, unsign
         {
             const auto &e = entry(uf, i);
             const bool ok = e.ST <= 31 && name_valid(e) && e.XL <= 31 && e.XH <= 63 && e.RC <= 0x80
-                         && entry_blocks_valid(e, dsm, dirBlocks);
+                         && entry_blocks_valid(e, dsm, dirBlocks, dsm);
             (ok ? s.good : s.bad)++;
         }
     return s;
 }
 
-bool blocks_valid(const dsk_tools::UniversalFile &uf, unsigned dsm, unsigned dirBlocks)
+bool blocks_valid(const dsk_tools::UniversalFile &uf, unsigned dsm, unsigned dirBlocks, unsigned lastBlock)
 {
     for (size_t i = 0; i < entry_count(uf); ++i)
-        if (!entry_blocks_valid(entry(uf, i), dsm, dirBlocks))
+        if (!entry_blocks_valid(entry(uf, i), dsm, dirBlocks, lastBlock))
             return false;
     return true;
+}
+
+long long last_block_in_file(const Geometry &g, uint64_t fileSize)
+{
+    if (fileSize < g.data_offset())
+        return -1;
+    return static_cast<long long>((fileSize - g.data_offset()) / g.blocksize) - 1;
 }
 
 bool score_image(const std::string &utf8Path, const Geometry &g, Score &score)

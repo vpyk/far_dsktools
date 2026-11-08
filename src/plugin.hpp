@@ -49,6 +49,7 @@ struct PluginPanel
     bool                                          geometryWritable = true;
     unsigned                                      cpmDsm       = 0;
     unsigned                                      cpmDirBlocks = 0;
+    unsigned                                      cpmLastBlock = 0;     // DSM, or the last block of a short file
 
     // The image file as this panel loaded or saved it last (sync_image())
     FILETIME                                      diskTime  = {};

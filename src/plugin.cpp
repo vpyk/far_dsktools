@@ -759,7 +759,8 @@ static std::wstring mount_image(PluginPanel &panel)
     panel.infoValid  = false;
 
     // The block numbers fsCPM can read: DSM and the directory blocks
-    panel.cpmDsm = panel.cpmDirBlocks = 0;
+    // (and those a file shorter than the disk holds: the loader fills the rest with E5)
+    panel.cpmDsm = panel.cpmDirBlocks = panel.cpmLastBlock = 0;
     cpm_geometry::Geometry g;
     if (panel.filesystem->get_fs() == dsk_tools::FS::CPM)
     {
@@ -767,11 +768,14 @@ static std::wstring mount_image(PluginPanel &panel)
         {
             panel.cpmDsm       = g.dsm();
             panel.cpmDirBlocks = g.dir_blocks();
+            long long last     = panel.diskSize ? cpm_geometry::last_block_in_file(g, panel.diskSize) : g.dsm();
+            panel.cpmLastBlock = last < 0 ? 0 : static_cast<unsigned>(std::min<long long>(last, g.dsm()));
         }
         else if (panel.typeId == "TYPE_AGAT_140")
         {
             panel.cpmDsm       = 127;   // the DPB fsCPM::open() sets for it
             panel.cpmDirBlocks = 2;
+            panel.cpmLastBlock = 127;
         }
     }
     return L"";
@@ -781,7 +785,8 @@ static std::wstring mount_image(PluginPanel &panel)
 // make it read outside the image
 static bool cpm_blocks_ok(const PluginPanel &panel, const dsk_tools::UniversalFile &uf)
 {
-    return !panel.cpmDsm || uf.is_dir || cpm_geometry::blocks_valid(uf, panel.cpmDsm, panel.cpmDirBlocks);
+    return !panel.cpmDsm || uf.is_dir
+        || cpm_geometry::blocks_valid(uf, panel.cpmDsm, panel.cpmDirBlocks, panel.cpmLastBlock);
 }
 
 // Why the image cannot be modified, empty if it can. Only raw images are saved for now:
@@ -805,6 +810,8 @@ static std::wstring read_only_reason(PluginPanel &panel)
     if (fad.dwFileAttributes & FILE_ATTRIBUTE_READONLY)
         return msg(MImageReadOnly);
     unsigned long long size = (static_cast<unsigned long long>(fad.nFileSizeHigh) << 32) | fad.nFileSizeLow;
+    if (size < panel.image->get_buffer()->size())
+        return msg(MImageShort);
     if (size != panel.image->get_buffer()->size())
         return msg(MImageHasHeader);
     return L"";
