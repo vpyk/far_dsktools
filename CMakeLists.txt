@@ -14,6 +14,7 @@ endif()
 # ── Plugin library ─────────────────────────────────────────────
 add_library(plug SHARED
     src/plugin.cpp
+    src/cpm_geometry.cpp
     src/plugin.def
 )
 

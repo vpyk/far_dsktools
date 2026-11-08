@@ -7,6 +7,10 @@
 #include <set>
 #include <plugin.hpp>
 #include <dsk_tools/dsk_tools.h>
+#include "cpm_geometry.hpp"
+
+// Where the geometry of a raw CP/M image came from (find_cpm_geometry())
+using GeometrySource = cpm_geometry::Source;
 
 // ── Per-panel state ────────────────────────────────────────────
 struct PluginPanel
@@ -38,6 +42,13 @@ struct PluginPanel
     unsigned long long                            freeSize  = 0;    // OpenPanelInfo::FreeSize
 
     bool                                          backedUp  = false;    // <image>.bak made for this panel
+
+    // CP/M: where the geometry came from (find_cpm_geometry()), and the range of block
+    // numbers checked before fsCPM reads a file (cpmDsm 0: no check)
+    GeometrySource                                geometry  = GeometrySource::Standard;
+    bool                                          geometryWritable = true;
+    unsigned                                      cpmDsm       = 0;
+    unsigned                                      cpmDirBlocks = 0;
 
     // The image file as this panel loaded or saved it last (sync_image())
     FILETIME                                      diskTime  = {};

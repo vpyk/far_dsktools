@@ -3,6 +3,7 @@
 #include "info_tokens.hpp"
 #include "uuid.hpp"
 #include "version.hpp"
+#include "cpm_geometry.hpp"
 #include "diskdefs_embed.h"
 
 #include <DlgBuilder.hpp>
@@ -582,21 +583,26 @@ static bool set_cpm_dir(PluginPanel &panel, const wchar_t *dir)
 
 struct DetectedImage
 {
-    std::wstring path;
-    std::string  formatId;
-    std::string  typeId;
-    std::string  fsId;
+    std::wstring   path;
+    std::string    formatId;
+    std::string    typeId;
+    std::string    fsId;
+    GeometrySource geometry = GeometrySource::Standard;
+    bool           geometryWritable = true;
 };
 
 // AnalyseW results, owned until OpenW(OPEN_ANALYSE) or CloseAnalyseW
 static std::map<intptr_t, DetectedImage> g_Analysed;
 static intptr_t g_NextAnalyseHandle = 1;
 
+static bool find_cpm_geometry(DetectedImage &di, bool detected);
+
 static bool detect_image(const std::wstring &path, DetectedImage &out, std::wstring *error)
 {
     out.path = path;
     auto r = dsk_tools::detect_fdd_type(wide_to_utf8(path), out.formatId, out.typeId, out.fsId, false);
-    if (!r)
+    // dsk_tools picks a CP/M geometry by the extension and the size alone
+    if (!find_cpm_geometry(out, static_cast<bool>(r)))
     {
         if (error) *error = describe(msg(MFormatDetectionFailed), r);
         return false;
@@ -621,11 +627,101 @@ static std::wstring fs_name(dsk_tools::FS fs)
     }
 }
 
-static const dsk_tools::DiskDefs &diskdefs()
+// The library's own diskdefs
+static const dsk_tools::DiskDefs &library_diskdefs()
 {
     static const dsk_tools::DiskDefs defs =
         dsk_tools::parse_diskdefs(dsk_tools::embedded_diskdefs());
     return defs;
+}
+
+// ... plus the CP/M geometries find_cpm_geometry() registered
+static dsk_tools::DiskDefs &diskdefs()
+{
+    static dsk_tools::DiskDefs defs = library_diskdefs();
+    return defs;
+}
+
+// ── CP/M geometry ──────────────────────────────────────────────
+// dsk_tools takes the geometry of a CP/M image from its extension and size, and a wrong
+// one shows garbage instead of names (and fsCPM reads past the image on such entries).
+// So a raw CP/M image is checked by its directory. A geometry from the disk's own
+// parameter block in the boot sector comes first, then dsk_tools' one, then the CP/M
+// diskdefs of that size with the system tracks counted by sides. Only the first may be
+// written; an image whose directory fits none opens as dsk_tools sees it, read-only.
+
+// The geometry of a TYPE_CPM:<diskdef> type
+static bool geometry_of_type(const std::string &typeId, cpm_geometry::Geometry &g)
+{
+    if (typeId.rfind("TYPE_CPM:", 0) != 0)
+        return false;
+    std::string key = typeId.substr(9);
+    std::transform(key.begin(), key.end(), key.begin(), [](char c) { return static_cast<char>(tolower(static_cast<unsigned char>(c))); });
+    auto it = diskdefs().find(key);
+    return it != diskdefs().end() && cpm_geometry::from_diskdef(it->second, g);
+}
+
+static std::string cpm_type(const std::string &name)
+{
+    std::string type = "TYPE_CPM:" + name;
+    std::transform(type.begin(), type.end(), type.begin(), [](char c) { return static_cast<char>(toupper(static_cast<unsigned char>(c))); });
+    return type;
+}
+
+// The first bytes of the file and its size
+static bool read_head(const std::wstring &path, uint8_t *buf, DWORD size, unsigned long long &fileSize)
+{
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE)
+        return false;
+    LARGE_INTEGER li = {};
+    DWORD got = 0;
+    bool ok = GetFileSizeEx(h, &li) && ReadFile(h, buf, size, &got, nullptr) && got == size;
+    CloseHandle(h);
+    fileSize = static_cast<unsigned long long>(li.QuadPart);
+    return ok;
+}
+
+static void use_geometry(DetectedImage &di, const std::string &name, const cpm_geometry::Geometry &g,
+                         GeometrySource source, bool writable)
+{
+    diskdefs()[name]    = cpm_geometry::to_diskdef(g, name);
+    di.formatId         = "FILE_RAW_MSB";
+    di.typeId           = cpm_type(name);
+    di.fsId             = "FILESYSTEM_CPM_RAW";
+    di.geometry         = source;
+    di.geometryWritable = writable;
+}
+
+// Checks (and replaces) the geometry of a raw CP/M image dsk_tools detected, and opens one
+// it did not by the parameter block of its boot sector. False: the image stays unknown.
+static bool find_cpm_geometry(DetectedImage &di, bool detected)
+{
+    if (detected && !(di.formatId == "FILE_RAW_MSB" && di.typeId.rfind("TYPE_CPM:", 0) == 0))
+        return detected;
+
+    uint8_t boot[32];
+    unsigned long long size = 0;
+    if (!read_head(di.path, boot, sizeof(boot), size))
+        return detected;
+    cpm_geometry::Geometry standard;
+    const bool known = detected && geometry_of_type(di.typeId, standard);
+    if (detected && !known)
+        return true;
+
+    cpm_geometry::Found found;
+    if (!cpm_geometry::find(wide_to_utf8(di.path), boot, sizeof(boot), size,
+                            known ? &standard : nullptr, library_diskdefs(), found))
+        return detected;
+    if (found.source == GeometrySource::Boot || found.source == GeometrySource::Guessed)
+        use_geometry(di, found.name, found.geometry, found.source, found.writable);
+    else
+    {
+        di.geometry         = found.source;
+        di.geometryWritable = found.writable;
+    }
+    return true;
 }
 
 // Loads panel.hostPath as panel.formatId/typeId/fsId and mounts its filesystem.
@@ -661,7 +757,31 @@ static std::wstring mount_image(PluginPanel &panel)
     panel.dirStack.clear();
     panel.cpmUser    = 0;
     panel.infoValid  = false;
+
+    // The block numbers fsCPM can read: DSM and the directory blocks
+    panel.cpmDsm = panel.cpmDirBlocks = 0;
+    cpm_geometry::Geometry g;
+    if (panel.filesystem->get_fs() == dsk_tools::FS::CPM)
+    {
+        if (geometry_of_type(panel.typeId, g))
+        {
+            panel.cpmDsm       = g.dsm();
+            panel.cpmDirBlocks = g.dir_blocks();
+        }
+        else if (panel.typeId == "TYPE_AGAT_140")
+        {
+            panel.cpmDsm       = 127;   // the DPB fsCPM::open() sets for it
+            panel.cpmDirBlocks = 2;
+        }
+    }
     return L"";
+}
+
+// Whether fsCPM may read the file: a block number past the disk in a damaged entry would
+// make it read outside the image
+static bool cpm_blocks_ok(const PluginPanel &panel, const dsk_tools::UniversalFile &uf)
+{
+    return !panel.cpmDsm || uf.is_dir || cpm_geometry::blocks_valid(uf, panel.cpmDsm, panel.cpmDirBlocks);
 }
 
 // Why the image cannot be modified, empty if it can. Only raw images are saved for now:
@@ -673,6 +793,9 @@ static std::wstring read_only_reason(PluginPanel &panel)
         return msg(MWriteDisabled);
     if (!static_cast<bool>(panel.filesystem->get_caps() & FSCaps::Add))
         return msg(MFsReadOnly, { fs_name(panel.filesystem->get_fs()) });
+    if (!panel.geometryWritable)
+        return msg(panel.geometry == GeometrySource::Guessed ? MGeoGuessedRO
+                 : panel.geometry == GeometrySource::Damaged ? MDirDamaged : MGeoDiffersRO);
     if (panel.formatId != "FILE_RAW_MSB")
         return msg(MFormatNotSaved, { to_wide(panel.formatId) });
 
@@ -704,6 +827,8 @@ static HANDLE open_image(const DetectedImage &di, bool silent)
     panel.formatId   = di.formatId;
     panel.typeId     = di.typeId;
     panel.fsId       = di.fsId;
+    panel.geometry         = di.geometry;
+    panel.geometryWritable = di.geometryWritable;
 
     std::wstring error = mount_image(panel);
     if (!error.empty())
@@ -963,6 +1088,10 @@ static void build_info(PluginPanel &panel)
     add(msg(MInfoFormat), strip(panel.formatId, "FILE_"));
     add(msg(MInfoType), strip(panel.typeId, "TYPE_"));
     add(msg(MInfoFilesystem), fs_name(fs.get_fs()));
+    if (panel.fsId == "FILESYSTEM_CPM_RAW")
+        add(msg(MInfoGeometry), msg(panel.geometry == GeometrySource::Boot    ? MGeoBoot
+                                  : panel.geometry == GeometrySource::Guessed ? MGeoGuessed
+                                  : panel.geometry == GeometrySource::Damaged ? MDirDamaged : MGeoStandard));
     if (fs.get_volume_id() >= 0)
         add(msg(MInfoVolume), std::to_wstring(fs.get_volume_id()));
     std::wstring readOnly = read_only_reason(panel);
@@ -1287,6 +1416,8 @@ static Outcome extract_file(OpContext &ctx, const dsk_tools::UniversalFile &uf,
             return o;
     }
 
+    if (!cpm_blocks_ok(ctx.panel, uf))
+        return op_error(ctx, outPath, msg(MDamagedEntry));
     dsk_tools::BYTES fileData;
     auto r = ctx.panel.filesystem->get_file(uf, "FILE_BINARY", fileData);
     if (!r)
@@ -2497,6 +2628,8 @@ static Outcome read_node(OpContext &ctx, TreeNode &node, const std::wstring &nam
     auto &fs = *ctx.panel.filesystem;
     if (!node.uf.is_dir)
     {
+        if (!cpm_blocks_ok(ctx.panel, node.uf))
+            return op_error(ctx, name, msg(MDamagedEntry));
         auto r = fs.get_file(node.uf, "FILE_BINARY", node.data);
         return r ? Outcome::Ok : op_error(ctx, name, describe(msg(MCannotReadFile), r));
     }

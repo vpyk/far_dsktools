@@ -26,6 +26,14 @@
 "The image file is read-only"
 //[MImageHasHeader]
 "The image file has a header or a non-standard size"
+//[MGeoGuessedRO]
+"The CP/M geometry was found by the directory, the disk does not state it"
+//[MGeoDiffersRO]
+"The disk parameters differ from those dsk_tools would write with"
+//[MDirDamaged]
+"The directory looks damaged"
+//[MDamagedEntry]
+"Damaged directory entry: its blocks lie outside the disk"
 //[MFsNoSupport]
 "%1 does not support %2"
 //[MOpDeleting]
@@ -180,6 +188,14 @@
 "Writing"
 //[MInfoWritable]
 "allowed"
+//[MInfoGeometry]
+"Geometry"
+//[MGeoStandard]
+"standard"
+//[MGeoBoot]
+"from the boot sector"
+//[MGeoGuessed]
+"found by the directory"
 //[MInfoSpace]
 "Space"
 //[MInfoTotal]
