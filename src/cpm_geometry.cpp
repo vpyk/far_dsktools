@@ -136,24 +136,28 @@ bool read_boot_dpb(const uint8_t *b, size_t bootSize, uint64_t fileSize, BootDpb
     return true;
 }
 
-static bool name_valid(const dsk_tools::CPM_DIR_ENTRY &e)
+// One field of a name: printable, padded with spaces or, as some programs write it, with
+// zero bytes (fsCPM skips those); a zero is followed by padding only. True if not blank.
+static bool field_valid(const uint8_t *f, size_t n, bool &blank)
 {
-    bool blank = true;
-    for (uint8_t c : e.F)
+    bool padding = false;
+    for (size_t i = 0; i < n; ++i)
     {
-        c &= 0x7F;
-        if (c < 0x20 || c == 0x7F)
+        const uint8_t c = f[i] & 0x7F;
+        if (c == 0)
+            padding = true;
+        else if (c < 0x20 || c == 0x7F || (padding && c != ' '))
             return false;
-        if (c != ' ')
+        else if (c != ' ')
             blank = false;
     }
-    for (uint8_t c : e.E)
-    {
-        c &= 0x7F;
-        if (c < 0x20 || c == 0x7F)
-            return false;
-    }
-    return !blank;
+    return true;
+}
+
+static bool name_valid(const dsk_tools::CPM_DIR_ENTRY &e)
+{
+    bool blank = true, extBlank = true;
+    return field_valid(e.F, sizeof(e.F), blank) && field_valid(e.E, sizeof(e.E), extBlank) && !blank;
 }
 
 // The block numbers of one entry, as fsCPM::load_file() reads them
@@ -250,16 +254,21 @@ bool find(const std::string &utf8Path, const uint8_t *boot, size_t bootSize, uin
     const bool detected = standard != nullptr;
 
     // A file dsk_tools does not know needs live entries; a known one may be empty
+    // The parameter block has no character set: that of dsk_tools' type, of the same machine
     BootDpb dpb;
     Score score;
-    if (read_boot_dpb(boot, bootSize, fileSize, dpb) && score_image(utf8Path, dpb.geometry, score)
+    const bool hasDpb = read_boot_dpb(boot, bootSize, fileSize, dpb);
+    if (hasDpb && standard)
+        dpb.geometry.charmap = standard->charmap;
+    if (hasDpb && score_image(utf8Path, dpb.geometry, score)
         && score.valid() && (detected || score.good > 0))
     {
         const Geometry &g = dpb.geometry;
         out.source   = Source::Boot;
         out.name     = "boot-" + std::to_string(g.seclen) + "-" + std::to_string(g.sectrk) + "-"
                      + std::to_string(g.tracks) + "-" + std::to_string(g.blocksize) + "-"
-                     + std::to_string(g.maxdir) + "-" + std::to_string(g.boottrk);
+                     + std::to_string(g.maxdir) + "-" + std::to_string(g.boottrk)
+                     + (g.charmap.empty() ? "" : "-" + g.charmap);
         out.geometry = g;
         out.writable = dpb.sameAsLibrary;
         return true;
