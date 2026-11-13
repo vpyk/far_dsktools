@@ -21,6 +21,8 @@ struct Geometry
     unsigned blocksize = 0;
     unsigned maxdir    = 0;
     unsigned boottrk   = 0;     // cylinders: tracks of every side
+    unsigned dsmLimit  = 0;     // diskdef "dsm": the highest block when lower than the tracks
+                                // hold (from a boot sector parameter block); 0: none
     std::string sides  = "int";
     std::string charmap;
     std::vector<unsigned> skewtab;
@@ -49,8 +51,8 @@ struct BootDpb
 {
     Geometry geometry;      // as fsCPM reads it: one head over all the tracks, so that
                             // OFF can count the tracks of one side, as the DPB does
-    bool     sameAsLibrary; // EXM, AL0/AL1 as fsCPM derives them, and its DSM not past the
-                            // disk's: writing would allocate as the disk's own system does
+    bool     sameAsLibrary; // EXM, AL0/AL1 as fsCPM derives them (its DSM is the disk's,
+                            // through dsmLimit): writing allocates as the disk's system does
 };
 bool read_boot_dpb(const uint8_t *boot, size_t bootSize, uint64_t fileSize, BootDpb &out);
 

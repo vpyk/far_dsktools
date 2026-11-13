@@ -1,0 +1,46 @@
+From ce351d6021ab89b813cb9470ba5aea77db4461dd Mon Sep 17 00:00:00 2001
+From: Viktor Pykhonin <pyk@mail.ru>
+Date: Fri, 13 Nov 2026 23:27:00 +0300
+Subject: [PATCH] CP/M: a diskdef may lower DSM with "dsm"
+
+fill_dpb() derives DSM from the tracks past the system ones. Some disks
+count fewer blocks than that: the parameter block in the boot sector of
+an Orion disk of 5 x 1024 byte sectors, 2 x 80 tracks and 4 system
+tracks says DSM 388, where the tracks hold 390 blocks of 2 Kb (DSM 389).
+put_file() then takes block 389 on a full disk, a block the disk's own
+system does not count as its.
+
+An optional "dsm" in the diskdef now lowers the derived value (a higher
+one is ignored: the image does not hold the blocks). EXM still follows
+from the resulting DSM. The diskdefs parser already keeps any numeric
+key, so it can be given there too.
+
+Assisted-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/filesystems/fs_cpm.cpp | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/src/filesystems/fs_cpm.cpp b/src/filesystems/fs_cpm.cpp
+index 87261e7..e1e7d8e 100644
+--- a/src/filesystems/fs_cpm.cpp
++++ b/src/filesystems/fs_cpm.cpp
+@@ -109,7 +109,15 @@ fsCPM::fsCPM(diskImage * image, const std::string &filesystem_id, const DiskDefs
+         const auto SPT = static_cast<uint16_t>(seclen * sectrk / 128);
+         const auto BSH = static_cast<uint8_t>(n - 7);
+         const auto BLM = static_cast<uint8_t>((1u << BSH) - 1u);                       // BLS/128 - 1
+-        const auto DSM = static_cast<uint16_t>((tracks - OFF) * heads * sectrk * seclen / BLS - 1);
++        auto DSM = static_cast<uint16_t>((tracks - OFF) * heads * sectrk * seclen / BLS - 1);
++        // A disk may use fewer blocks than its tracks hold (the parameter block in the boot
++        // sector of Orion and Korvet disks says so): "dsm" lowers the highest block number,
++        // so that put_file() does not take blocks the disk's own system does not count
++        unsigned dsm_limit = 0;
++        if (!get_map_value(diskdef.int_params, std::string("dsm"), dsm_limit, 0, false))
++            return Result::error(ErrorCode::OpenBadFormat, QT_TRANSLATE_NOOP("errors", "CP/M disk definition: dsm is incorrect"));
++        if (dsm_limit != 0 && dsm_limit < DSM)
++            DSM = static_cast<uint16_t>(dsm_limit);
+         // CP/M 2.2 standard EXM: DSM<256 -> BLS/1024-1, else BLS/2048-1
+         const auto  EXM = static_cast<uint8_t>(
+             (DSM < 256)
+-- 
+2.56.0.windows.2
+

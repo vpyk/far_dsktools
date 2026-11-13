@@ -7,7 +7,8 @@ namespace cpm_geometry {
 // The formulas of fsCPM::fill_dpb()
 unsigned Geometry::dsm() const
 {
-    return (tracks - boottrk) * heads * sectrk * seclen / blocksize - 1;
+    const unsigned held = (tracks - boottrk) * heads * sectrk * seclen / blocksize - 1;
+    return dsmLimit != 0 && dsmLimit < held ? dsmLimit : held;
 }
 
 unsigned Geometry::exm() const
@@ -37,6 +38,8 @@ dsk_tools::DiskDef to_diskdef(const Geometry &g, const std::string &name)
     def.int_params = { { "seclen", g.seclen }, { "heads", g.heads }, { "tracks", g.tracks },
                        { "sectrk", g.sectrk }, { "blocksize", g.blocksize },
                        { "maxdir", g.maxdir }, { "boottrk", g.boottrk } };
+    if (g.dsmLimit != 0)
+        def.int_params["dsm"] = g.dsmLimit;
     def.str_params["sides"] = g.sides;
     if (!g.charmap.empty())
         def.str_params["charmap"] = g.charmap;
@@ -61,6 +64,7 @@ bool from_diskdef(const dsk_tools::DiskDef &def, Geometry &g)
     g.sectrk    = int_param(def, "sectrk", 0);
     g.maxdir    = int_param(def, "maxdir", 64);
     g.boottrk   = int_param(def, "boottrk", 0);
+    g.dsmLimit  = int_param(def, "dsm", 0);
     if (!g.blocksize || !g.seclen || !g.heads || !g.tracks || !g.sectrk || g.boottrk >= g.tracks)
         return false;
     auto s = def.str_params.find("sides");
@@ -118,6 +122,7 @@ bool read_boot_dpb(const uint8_t *b, size_t bootSize, uint64_t fileSize, BootDpb
     g.blocksize = 128u << bsh;
     g.maxdir    = drm + 1;
     g.boottrk   = off;
+    g.dsmLimit  = dsm;      // some disks count fewer blocks than their tracks hold
     if (spt * 128 != sec * g.seclen || off >= g.tracks || g.blocksize < g.seclen)
         return false;
     // A file 256 bytes longer is taken by the raw loader for one with a header, which
@@ -132,7 +137,7 @@ bool read_boot_dpb(const uint8_t *b, size_t bootSize, uint64_t fileSize, BootDpb
         return false;
 
     out.geometry      = g;
-    out.sameAsLibrary = g.exm() == exm && g.al0() == b[0x19] && g.al1() == b[0x1A] && g.dsm() <= dsm;
+    out.sameAsLibrary = g.exm() == exm && g.al0() == b[0x19] && g.al1() == b[0x1A];
     return true;
 }
 
@@ -269,6 +274,7 @@ bool find(const std::string &utf8Path, const uint8_t *boot, size_t bootSize, uin
         out.name     = "boot-" + std::to_string(g.seclen) + "-" + std::to_string(g.sectrk) + "-"
                      + std::to_string(g.tracks) + "-" + std::to_string(g.blocksize) + "-"
                      + std::to_string(g.maxdir) + "-" + std::to_string(g.boottrk)
+                     + "-dsm" + std::to_string(g.dsm())
                      + (g.charmap.empty() ? "" : "-" + g.charmap);
         out.geometry = g;
         out.writable = dpb.sameAsLibrary;
