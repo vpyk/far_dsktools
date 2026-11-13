@@ -729,6 +729,30 @@ static bool find_cpm_geometry(DetectedImage &di, bool detected)
 static void remember_stamp(PluginPanel &panel);
 static void sync_image(PluginPanel &panel, bool report);
 
+// The block numbers fsCPM can read: DSM and the directory blocks (and those a file shorter
+// than the disk holds: the loader fills the rest with E5). After mounting and after a save,
+// which may lengthen a short file.
+static void set_cpm_bounds(PluginPanel &panel)
+{
+    panel.cpmDsm = panel.cpmDirBlocks = panel.cpmLastBlock = 0;
+    if (!panel.filesystem || panel.filesystem->get_fs() != dsk_tools::FS::CPM)
+        return;
+    cpm_geometry::Geometry g;
+    if (geometry_of_type(panel.typeId, g))
+    {
+        panel.cpmDsm       = g.dsm();
+        panel.cpmDirBlocks = g.dir_blocks();
+        long long last     = panel.diskSize ? cpm_geometry::last_block_in_file(g, panel.diskSize) : g.dsm();
+        panel.cpmLastBlock = last < 0 ? 0 : static_cast<unsigned>(std::min<long long>(last, g.dsm()));
+    }
+    else if (panel.typeId == "TYPE_AGAT_140")
+    {
+        panel.cpmDsm       = 127;   // the DPB fsCPM::open() sets for it
+        panel.cpmDirBlocks = 2;
+        panel.cpmLastBlock = 127;
+    }
+}
+
 static std::wstring mount_image(PluginPanel &panel)
 {
     std::string uPath = wide_to_utf8(panel.hostPath);
@@ -758,26 +782,7 @@ static std::wstring mount_image(PluginPanel &panel)
     panel.cpmUser    = 0;
     panel.infoValid  = false;
 
-    // The block numbers fsCPM can read: DSM and the directory blocks
-    // (and those a file shorter than the disk holds: the loader fills the rest with E5)
-    panel.cpmDsm = panel.cpmDirBlocks = panel.cpmLastBlock = 0;
-    cpm_geometry::Geometry g;
-    if (panel.filesystem->get_fs() == dsk_tools::FS::CPM)
-    {
-        if (geometry_of_type(panel.typeId, g))
-        {
-            panel.cpmDsm       = g.dsm();
-            panel.cpmDirBlocks = g.dir_blocks();
-            long long last     = panel.diskSize ? cpm_geometry::last_block_in_file(g, panel.diskSize) : g.dsm();
-            panel.cpmLastBlock = last < 0 ? 0 : static_cast<unsigned>(std::min<long long>(last, g.dsm()));
-        }
-        else if (panel.typeId == "TYPE_AGAT_140")
-        {
-            panel.cpmDsm       = 127;   // the DPB fsCPM::open() sets for it
-            panel.cpmDirBlocks = 2;
-            panel.cpmLastBlock = 127;
-        }
-    }
+    set_cpm_bounds(panel);
     return L"";
 }
 
@@ -810,8 +815,12 @@ static std::wstring read_only_reason(PluginPanel &panel)
     if (fad.dwFileAttributes & FILE_ATTRIBUTE_READONLY)
         return msg(MImageReadOnly);
     unsigned long long size = (static_cast<unsigned long long>(fad.nFileSizeHigh) << 32) | fad.nFileSizeLow;
-    if (size < panel.image->get_buffer()->size())
+    // A CP/M file with its empty end cut off grows as far as the data needs (save_image()).
+    // Only the boot sector geometry opens such files; the E5 filler suits CP/M alone.
+    if (size < panel.image->get_buffer()->size() && panel.geometry != GeometrySource::Boot)
         return msg(MImageShort);
+    if (size < panel.image->get_buffer()->size())
+        return L"";
     if (size != panel.image->get_buffer()->size())
         return msg(MImageHasHeader);
     return L"";
@@ -1561,6 +1570,31 @@ static Outcome extract_list(OpContext &ctx, const dsk_tools::Files &files,
 
 // ── Saving the image ───────────────────────────────────────────
 
+// A file shorter than the disk (its empty end cut off; the loader filled it with E5) stays
+// short: it is written up to the last byte that is not E5, rounded up to a track, and never
+// shorter than it was. What is left out is E5 alone, which the loader puts back.
+static void keep_short(const PluginPanel &panel, dsk_tools::BYTES &buffer)
+{
+    if (panel.diskSize == 0 || panel.diskSize >= buffer.size())
+        return;
+    cpm_geometry::Geometry g;
+    size_t track = geometry_of_type(panel.typeId, g) ? g.sectrk * g.seclen : 0;
+    if (track == 0)
+        return;
+    size_t keep = buffer.size();
+    while (keep > panel.diskSize && buffer[keep - 1] == 0xE5)
+        --keep;
+    if (keep > panel.diskSize)
+    {
+        keep = (keep + track - 1) / track * track;
+        if (keep > buffer.size())
+            keep = buffer.size();
+    }
+    else
+        keep = static_cast<size_t>(panel.diskSize);
+    buffer.resize(keep);
+}
+
 // Writes the image back to panel.hostPath: into a temporary file next to it, then
 // ReplaceFileW, so a failure midway never leaves a half-written image.
 // Returns an error text, empty on success.
@@ -1575,6 +1609,7 @@ static std::wstring save_image(PluginPanel &panel)
     auto r = writer->write(buffer);
     if (!r)
         return describe(msg(MCannotBuildImage), r);
+    keep_short(panel, buffer);
 
     // The image as it was before the first change made in this panel
     if (g_Settings.backup && !panel.backedUp)
@@ -1610,6 +1645,7 @@ static std::wstring save_image(PluginPanel &panel)
     panel.filesystem->reset_changed();
     ++g_SaveCounts[name_key(panel.hostPath)];
     remember_stamp(panel);
+    set_cpm_bounds(panel);      // a short file may have grown
     panel.infoValid = false;    // free space, file count
     return L"";
 }
