@@ -160,14 +160,15 @@ static bool name_valid(const dsk_tools::CPM_DIR_ENTRY &e)
     return field_valid(e.F, sizeof(e.F), blank) && field_valid(e.E, sizeof(e.E), extBlank) && !blank;
 }
 
-// The block numbers of one entry, as fsCPM::load_file() reads them
+// The block numbers of one entry, as fsCPM::load_file() reads them: only 0 is an empty slot,
+// 0xE5 is block 229
 static bool entry_blocks_valid(const dsk_tools::CPM_DIR_ENTRY &e, unsigned dsm, unsigned dirBlocks, unsigned lastBlock)
 {
     const bool wide = dsm >= 256;
     for (unsigned i = 0; i < 16; i += wide ? 2 : 1)
     {
         const unsigned al = wide ? e.AL[i] | (e.AL[i + 1] << 8) : e.AL[i];
-        if (al == 0 || al == 0xE5 || al == 0xE5E5)
+        if (al == 0)
             continue;
         if (al > lastBlock || al < dirBlocks)
             return false;
