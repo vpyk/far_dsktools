@@ -125,6 +125,13 @@ bool read_boot_dpb(const uint8_t *b, size_t bootSize, uint64_t fileSize, BootDpb
     g.dsmLimit  = dsm;      // some disks count fewer blocks than their tracks hold
     if (spt * 128 != sec * g.seclen || off >= g.tracks || g.blocksize < g.seclen)
         return false;
+    // A disk formatted with more tracks than the block states (Vector: 82 of a side, the
+    // block says 80): the tracks of the file, whole cylinders, up to 4 more a side. Saving
+    // then writes the whole file back; dsmLimit keeps the blocks to the disk's
+    const uint64_t cylinder = static_cast<uint64_t>(sec) * g.seclen * (sides + 1);
+    if (fileSize > g.image_size() && (fileSize - g.image_size()) % cylinder == 0
+        && (fileSize - g.image_size()) / cylinder <= 4)
+        g.tracks = static_cast<unsigned>(fileSize / cylinder) * (sides + 1);
     // A file 256 bytes longer is taken by the raw loader for one with a header, which
     // would shift every sector. A shorter one (an empty end cut off) must hold the
     // directory at least: the loader fills the rest with E5
