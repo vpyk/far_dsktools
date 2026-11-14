@@ -30,7 +30,8 @@ struct Geometry
     unsigned image_size() const { return heads * tracks * sectrk * seclen; }
     unsigned data_offset() const { return boottrk * heads * sectrk * seclen; }   // block 0
     // The values fsCPM::fill_dpb() derives from it
-    unsigned dsm() const;
+    unsigned dsm() const;           // DPB.DSM: bounds put_file(), sets the width of block numbers
+    unsigned last_block() const;    // the highest block the tracks hold: fsCPM reads up to it
     unsigned exm() const;
     unsigned dir_blocks() const;
     uint8_t  al0() const;
@@ -53,6 +54,7 @@ struct BootDpb
                             // OFF can count the tracks of one side, as the DPB does
     bool     sameAsLibrary; // EXM, AL0/AL1 as fsCPM derives them (its DSM is the disk's,
                             // through dsmLimit): writing allocates as the disk's system does
+    unsigned exm = 0, al0 = 0, al1 = 0;     // as the block has them
 };
 bool read_boot_dpb(const uint8_t *boot, size_t bootSize, uint64_t fileSize, BootDpb &out);
 
@@ -65,7 +67,9 @@ struct Score
     bool valid() const { return bad * 10 <= good; }    // an empty directory is valid
     int  rank() const  { return good - 10 * bad; }
 };
-Score score_directory(const std::vector<dsk_tools::UniversalFile> &files, unsigned dsm, unsigned dirBlocks);
+// `dsm` sets the width of block numbers, valid ones lie in dirBlocks..lastBlock
+Score score_directory(const std::vector<dsk_tools::UniversalFile> &files, unsigned dsm, unsigned dirBlocks,
+                      unsigned lastBlock);
 
 // How the image's directory reads with geometry `g`; false if it does not open
 bool score_image(const std::string &utf8Path, const Geometry &g, Score &score);

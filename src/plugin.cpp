@@ -742,8 +742,9 @@ static void set_cpm_bounds(PluginPanel &panel)
     {
         panel.cpmDsm       = g.dsm();
         panel.cpmDirBlocks = g.dir_blocks();
-        long long last     = panel.diskSize ? cpm_geometry::last_block_in_file(g, panel.diskSize) : g.dsm();
-        panel.cpmLastBlock = last < 0 ? 0 : static_cast<unsigned>(std::min<long long>(last, g.dsm()));
+        // fsCPM reads up to the last block of the tracks, past a lower "dsm"
+        long long last     = panel.diskSize ? cpm_geometry::last_block_in_file(g, panel.diskSize) : g.last_block();
+        panel.cpmLastBlock = last < 0 ? 0 : static_cast<unsigned>(std::min<long long>(last, g.last_block()));
     }
     else if (panel.typeId == "TYPE_AGAT_140")
     {

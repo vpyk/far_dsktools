@@ -7,8 +7,13 @@ namespace cpm_geometry {
 // The formulas of fsCPM::fill_dpb()
 unsigned Geometry::dsm() const
 {
-    const unsigned held = (tracks - boottrk) * heads * sectrk * seclen / blocksize - 1;
+    const unsigned held = last_block();
     return dsmLimit != 0 && dsmLimit < held ? dsmLimit : held;
+}
+
+unsigned Geometry::last_block() const
+{
+    return (tracks - boottrk) * heads * sectrk * seclen / blocksize - 1;
 }
 
 unsigned Geometry::exm() const
@@ -132,18 +137,25 @@ bool read_boot_dpb(const uint8_t *b, size_t bootSize, uint64_t fileSize, BootDpb
     if (fileSize > g.image_size() && (fileSize - g.image_size()) % cylinder == 0
         && (fileSize - g.image_size()) / cylinder <= 4)
         g.tracks = static_cast<unsigned>(fileSize / cylinder) * (sides + 1);
-    // A file 256 bytes longer is taken by the raw loader for one with a header, which
-    // would shift every sector. A shorter one (an empty end cut off) must hold the
-    // directory at least: the loader fills the rest with E5
-    if (fileSize == g.image_size() + 256u
+    // A file longer still is not the disk the block describes: PK8000 disks of 800 Kb keep a
+    // block of a 400 Kb disk there (40 tracks a side, DSM 195) and number their blocks in
+    // two bytes, which that DSM would read as one. (One 256 bytes longer would also be
+    // taken by the raw loader for one with a header, which shifts every sector.) A shorter
+    // file (an empty end cut off) must hold the directory at least: the loader fills the
+    // rest with E5
+    if (fileSize > g.image_size()
         || fileSize < static_cast<uint64_t>(g.data_offset()) + g.dir_blocks() * g.blocksize)
         return false;
     // Block numbers of one byte or two follow from DSM: the same on both sides, or fsCPM
-    // reads the directory wrong
-    if ((g.dsm() < 256) != (dsm < 256))
+    // reads the directory wrong. Against what the tracks hold: "dsm" only lowers it, so a
+    // DSM of one width there and of the other here is not this disk's
+    if ((g.last_block() < 256) != (dsm < 256))
         return false;
 
     out.geometry      = g;
+    out.exm           = exm;
+    out.al0           = b[0x19];
+    out.al1           = b[0x1A];
     out.sameAsLibrary = g.exm() == exm && g.al0() == b[0x19] && g.al1() == b[0x1A];
     return true;
 }
@@ -177,11 +189,19 @@ static bool name_valid(const dsk_tools::CPM_DIR_ENTRY &e)
 static bool entry_blocks_valid(const dsk_tools::CPM_DIR_ENTRY &e, unsigned dsm, unsigned dirBlocks, unsigned lastBlock)
 {
     const bool wide = dsm >= 256;
+    bool hole = false;
     for (unsigned i = 0; i < 16; i += wide ? 2 : 1)
     {
         const unsigned al = wide ? e.AL[i] | (e.AL[i + 1] << 8) : e.AL[i];
         if (al == 0)
+        {
+            hole = true;
             continue;
+        }
+        // CP/M fills the slots of an entry in order. Numbers of two bytes read as one leave
+        // a zero after every block, as the high bytes below 256 are
+        if (hole && !wide)
+            return false;
         if (al > lastBlock || al < dirBlocks)
             return false;
     }
@@ -198,7 +218,8 @@ static const dsk_tools::CPM_DIR_ENTRY &entry(const dsk_tools::UniversalFile &uf,
     return *reinterpret_cast<const dsk_tools::CPM_DIR_ENTRY *>(uf.metadata.data() + i * sizeof(dsk_tools::CPM_DIR_ENTRY));
 }
 
-Score score_directory(const std::vector<dsk_tools::UniversalFile> &files, unsigned dsm, unsigned dirBlocks)
+Score score_directory(const std::vector<dsk_tools::UniversalFile> &files, unsigned dsm, unsigned dirBlocks,
+                      unsigned lastBlock)
 {
     Score s;
     for (const auto &uf : files)
@@ -206,7 +227,7 @@ Score score_directory(const std::vector<dsk_tools::UniversalFile> &files, unsign
         {
             const auto &e = entry(uf, i);
             const bool ok = e.ST <= 31 && name_valid(e) && e.XL <= 31 && e.XH <= 63 && e.RC <= 0x80
-                         && entry_blocks_valid(e, dsm, dirBlocks, dsm);
+                         && entry_blocks_valid(e, dsm, dirBlocks, lastBlock);
             (ok ? s.good : s.bad)++;
         }
     return s;
@@ -242,7 +263,7 @@ bool score_image(const std::string &utf8Path, const Geometry &g, Score &score)
         std::vector<dsk_tools::UniversalFile> files;
         if (!fs->dir(files, false))
             return false;
-        score = score_directory(files, g.dsm(), g.dir_blocks());
+        score = score_directory(files, g.dsm(), g.dir_blocks(), g.last_block());
         return true;
     }
     catch (...)
@@ -273,8 +294,36 @@ bool find(const std::string &utf8Path, const uint8_t *boot, size_t bootSize, uin
     const bool hasDpb = read_boot_dpb(boot, bootSize, fileSize, dpb);
     if (hasDpb && standard)
         dpb.geometry.charmap = standard->charmap;
-    if (hasDpb && score_image(utf8Path, dpb.geometry, score)
-        && score.valid() && (detected || score.good > 0))
+    auto boot_fits = [&](const Geometry &g)
+    {
+        return score_image(utf8Path, g, score) && score.valid() && (detected || score.good > 0);
+    };
+    bool bootFits = hasDpb && boot_fits(dpb.geometry);
+    bool bootWritable = dpb.sameAsLibrary;
+    // A block of a disk with numbers of one byte, over a directory that reads right only
+    // with numbers of two: PK8000 disks keep the block of a 400 Kb disk (40 tracks a side,
+    // DSM 195) on an 800 Kb Orion disk. Its layout holds, the tracks and DSM do not: the
+    // tracks of the library's disk of that layout, its DSM, the block's EXM and AL.
+    if (hasDpb && dpb.geometry.last_block() < 256 && !(bootFits && score.bad == 0))
+        for (const auto &kv : cpm_diskdefs(library))
+        {
+            const Geometry &d = kv.second;
+            Geometry w = dpb.geometry;
+            w.tracks   = d.tracks * d.heads;
+            w.dsmLimit = 0;
+            if (d.seclen != w.seclen || d.sectrk != w.sectrk || d.blocksize != w.blocksize
+                || d.maxdir != w.maxdir || d.skewtab != w.skewtab || d.data_offset() != w.data_offset()
+                || (d.heads != 1 && d.sides != "int") || w.last_block() < 256 || w.image_size() < fileSize)
+                continue;
+            if (boot_fits(w) && score.bad == 0)
+            {
+                dpb.geometry = w;
+                bootFits     = true;
+                bootWritable = w.exm() == dpb.exm && w.al0() == dpb.al0 && w.al1() == dpb.al1;
+                break;
+            }
+        }
+    if (bootFits)
     {
         const Geometry &g = dpb.geometry;
         out.source   = Source::Boot;
@@ -284,7 +333,7 @@ bool find(const std::string &utf8Path, const uint8_t *boot, size_t bootSize, uin
                      + "-dsm" + std::to_string(g.dsm())
                      + (g.charmap.empty() ? "" : "-" + g.charmap);
         out.geometry = g;
-        out.writable = dpb.sameAsLibrary;
+        out.writable = bootWritable;
         return true;
     }
     if (!detected)
