@@ -1338,10 +1338,21 @@ static std::wstring last_error_text(DWORD code)
 static intptr_t ask(const std::vector<std::wstring> &lines, const std::vector<const wchar_t *> &buttons)
 {
     static const UUID PluginUuid = PLUGIN_UUID;
+    // PSI.Message shows one item a line: split the lines on '\n' as show_error() does
+    std::vector<std::wstring> parts;
+    for (const auto &l : lines)
+        for (size_t start = 0;;)
+        {
+            size_t end = l.find(L'\n', start);
+            parts.push_back(l.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start));
+            if (end == std::wstring::npos)
+                break;
+            start = end + 1;
+        }
     std::vector<const wchar_t *> items;
     items.push_back(L"DskTools");
-    for (const auto &l : lines)
-        items.push_back(l.c_str());
+    for (const auto &p : parts)
+        items.push_back(p.c_str());
     items.insert(items.end(), buttons.begin(), buttons.end());
     return PSI.Message(&PluginUuid, nullptr, FMSG_WARNING, nullptr,
                        items.data(), items.size(), static_cast<intptr_t>(buttons.size()));
@@ -1813,6 +1824,27 @@ static bool find_entry(PluginPanel &panel, const std::wstring &name, dsk_tools::
     return false;
 }
 
+// Why `name` cannot be a CP/M file name, empty if it can. fsCPM checks the 8.3 lengths only
+// (in bytes of UTF-8) and copies the bytes as they are: CCP cannot reach a file named with a
+// space or one of the characters it parses, and the high bit of a name byte is an attribute
+// (R/O, SYS, archive), so nothing but ASCII can be written. Cyrillic is refused, not recoded:
+// KOI-8 sets that bit, and the KOI-7 of Korvet and Orion would go through fsCPM's to_upper.
+static std::wstring cpm_name_error(const std::wstring &name)
+{
+    static const wchar_t parsed[] = L"<>.,;:=?*[]|";
+    const auto dot = name.find(L'.');
+    const std::wstring base = name.substr(0, dot);
+    const std::wstring ext  = dot == std::wstring::npos ? L"" : name.substr(dot + 1);
+    bool ok = !base.empty() && base.size() <= 8 && ext.size() <= 3;
+    for (const std::wstring *part : { &base, &ext })
+        for (wchar_t c : *part)
+            if (c <= L' ' || c > L'~' || wcschr(parsed, c))
+                ok = false;
+    if (ok)
+        return L"";
+    return msg(MInvalidName, { fs_name(dsk_tools::FS::CPM) }) + (L"\n" + std::wstring(msg(MCpmNameRule)));
+}
+
 static std::wstring name_error(PluginPanel &panel, const dsk_tools::Result &r, const wchar_t *what)
 {
     if (r.code == dsk_tools::ErrorCode::InvalidName)
@@ -1863,6 +1895,13 @@ static Outcome put_file(OpContext &ctx, const std::wstring &srcPath, const std::
 {
     auto &panel = ctx.panel;
     auto &fs = *panel.filesystem;
+
+    if (fs.get_fs() == dsk_tools::FS::CPM)
+    {
+        std::wstring bad = cpm_name_error(name);
+        if (!bad.empty())
+            return op_error(ctx, name, bad);
+    }
 
     dsk_tools::BYTES data;
     std::wstring error;
@@ -2630,6 +2669,11 @@ static void rename_item(HANDLE hPanel, PluginPanel &panel)
         fail(msg(MInvalidName, { fs_name(dsk_tools::FS::DOS33) }));
         return;
     }
+    if (panel.filesystem->get_fs() == dsk_tools::FS::CPM && !cpm_name_error(name).empty())
+    {
+        fail(cpm_name_error(name));
+        return;
+    }
 
     auto r = panel.filesystem->rename_file(uf, wide_to_utf8(name));
     if (!r)
@@ -2816,6 +2860,11 @@ static void copy_item(HANDLE hPanel, PluginPanel &panel)
     if (dos33 && name.size() > 30)
     {
         show_error(std::wstring(ctx.action) + L"\n" + name + L"\n" + msg(MInvalidName, { fs_name(dsk_tools::FS::DOS33) }));
+        return;
+    }
+    if (panel.filesystem->get_fs() == dsk_tools::FS::CPM && !cpm_name_error(name).empty())
+    {
+        show_error(std::wstring(ctx.action) + L"\n" + name + L"\n" + cpm_name_error(name));
         return;
     }
 

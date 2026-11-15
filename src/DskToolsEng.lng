@@ -82,6 +82,8 @@
 "The file is too large for a disk image"
 //[MInvalidName]
 "The name is not valid for %1"
+//[MCpmNameRule]
+"CP/M: up to 8 characters, a dot, up to 3; Latin letters, digits and !"#$%&'()+-/@\^_`{}~; no spaces or Cyrillic"
 //[MDirExists]
 "A directory with this name exists"
 //[MFileWithNameExists]

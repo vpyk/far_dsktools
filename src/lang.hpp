@@ -46,6 +46,7 @@ enum LngId : int
     MCannotCopyInto,
     MFileTooLarge,
     MInvalidName,
+    MCpmNameRule,
     MDirExists,
     MFileWithNameExists,
     MCannotReplace,
