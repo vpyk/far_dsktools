@@ -13,6 +13,8 @@ cmake --preset x86 && cmake --build --preset x86
 
 Output: `build/<preset>/Release/DskTools.dll` (x64 → 64-bit FAR, x86 → 32-bit FAR) plus `DskToolsEng.lng`, `DskToolsRus.lng`, `DskToolsEng.hlf`, `DskToolsRus.hlf` (copied there by a post-build step). Copy all five to FAR3 `Plugins/DskTools/` — without the `.lng` files the plugin has no texts, without the `.hlf` F1 does nothing. The DLL bitness must match FAR's, otherwise FAR silently skips it.
 
+Release archives: `cmake --build --preset x64 --target dist` (and `x86`) → `build/<preset>/DskTools-<version>-<x64|x86>.zip`: folder `DskTools` (the five files) plus `README.md` and `LICENSE`; the version comes from `src/version.hpp`, the bitness from the pointer size.
+
 ## Architecture
 
 FAR3 file system plugin (плагин файловой системы) — a shared library exporting C-linkage functions. FAR loads the DLL, calls the exports, and the plugin presents a virtual file system panel.

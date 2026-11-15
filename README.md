@@ -67,7 +67,14 @@ cmake --preset x64 && cmake --build --preset x64
 cmake --preset x86 && cmake --build --preset x86
 ```
 
-Результат — в `build/<x64|x86>/Release/`.
+Результат — в `build/<x64|x86>/Release/`. Архив для установки (папка `DskTools`, `README.md`, `LICENSE`) собирается целью `dist`:
+
+```
+cmake --build --preset x64 --target dist
+cmake --build --preset x86 --target dist
+```
+
+и лежит в `build/<x64|x86>/DskTools-<версия>-<x64|x86>.zip`.
 
 ### Лицензия
 
@@ -144,7 +151,14 @@ cmake --preset x64 && cmake --build --preset x64
 cmake --preset x86 && cmake --build --preset x86
 ```
 
-The result is in `build/<x64|x86>/Release/`.
+The result is in `build/<x64|x86>/Release/`. The archive to install from (the `DskTools` folder, `README.md`, `LICENSE`) is built by the `dist` target:
+
+```
+cmake --build --preset x64 --target dist
+cmake --build --preset x86 --target dist
+```
+
+and lands in `build/<x64|x86>/DskTools-<version>-<x64|x86>.zip`.
 
 ### License
 

@@ -98,3 +98,26 @@ if(MSVC)
 else()
     target_compile_options(plug PRIVATE -Wall -Wextra)
 endif()
+
+# ── Distribution archive ───────────────────────────────────────
+# cmake --build --preset x64 --target dist → build/x64/DskTools-<version>-x64.zip:
+# the folder DskTools to unpack into FAR's Plugins (the DLL, .lng, .hlf), README.md, LICENSE
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(DIST_ARCH x64)
+else()
+    set(DIST_ARCH x86)
+endif()
+set(DIST_NAME DskTools-${PROJECT_VERSION}-${DIST_ARCH})
+set(DIST_STAGE ${CMAKE_CURRENT_BINARY_DIR}/dist)
+add_custom_target(dist
+    COMMAND ${CMAKE_COMMAND} -E rm -rf ${DIST_STAGE}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${DIST_STAGE}/DskTools
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:plug> ${LNG_FILES} ${HLF_FILES} ${DIST_STAGE}/DskTools
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/README.md ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE ${DIST_STAGE}
+    COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_CURRENT_BINARY_DIR}/${DIST_NAME}.zip
+    COMMAND ${CMAKE_COMMAND} -E chdir ${DIST_STAGE}
+            ${CMAKE_COMMAND} -E tar cf ${CMAKE_CURRENT_BINARY_DIR}/${DIST_NAME}.zip --format=zip DskTools README.md LICENSE
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    DEPENDS plug
+    COMMENT "Packing ${DIST_NAME}.zip"
+    VERBATIM)
