@@ -8,7 +8,7 @@
 - [x] **Автор и описание.** `GetGlobalInfoW`: автор Viktor Pykhonin, описание «Disk images of retro computers: browse and edit (CP/M, Agat, Apple II, FAT, RT-11 and others)».
 - [x] **Версия плагина.** 0.9.0, только в `src/version.hpp`; `CMakeLists.txt` берёт её оттуда для `project(DskTools VERSION …)`. Ресурс VERSIONINFO (`src/version.rc`) — версия, автор и лицензия в свойствах DLL.
 - [x] **Лицензия.** GPL-3.0-or-later, как у dsk_tools (линкуется статически): `LICENSE` — текст GPL-3.0 (совпадает с gnu.org), заголовки SPDX во всех своих исходниках, строка в VERSIONINFO. В README упомянуть сторонние части: заголовки FAR SDK (BSD-3 с исключением для плагинов), dsk_tools (GPL-3.0-or-later), тексты информационной панели из DISK Commander.
-- [ ] **Комплект поставки.** x64 и x86 DLL с `DskToolsEng.lng`, `DskToolsRus.lng`, `DskToolsEng.hlf`, `DskToolsRus.hlf`, README (установка, поддерживаемые форматы, требование VC++ Redistributable 2015–2022 ≥ 14.44 нужной разрядности).
+- [ ] **Комплект поставки.** README готов (`README.md`, русский и английский: форматы и запись, клавиши, настройки, установка, требования FAR 3.0.3800+ и VC++ Redistributable 2015–2022 ≥ 14.44 нужной разрядности, сборка, лицензии). Осталось: архивы x64 и x86 — папка `DskTools` с DLL, `DskToolsEng.lng`, `DskToolsRus.lng`, `DskToolsEng.hlf`, `DskToolsRus.hlf`, плюс `README.md` и `LICENSE`.
 
 - [x] **GUID плагина** — заглушка из шаблона заменена на `{A800155E-D7FA-4A2F-B529-75F2F0AE2CEF}`; больше не менять.
 - [x] **Локализация.** Тексты в `src/DskToolsEng.lng` / `src/DskToolsRus.lng` (`PSI.GetMsg`, `enum LngId` в `src/lang.hpp`, CMake проверяет согласованность). Не переводятся: описание плагина в `GetGlobalInfoW`, сообщения об ошибках dsk_tools (английские), имена ФС.
