@@ -4,11 +4,7 @@
 
 ## Перед релизом
 
-- [ ] **Минимальная версия FAR.** Сейчас `MinFarVersion = FARMANAGERVERSION`, то есть равна версии заголовков SDK (3.0.0.6666). Перед релизом:
-  1. составить перечень используемого API (экспорты, `FCTL_*`, `OPIF_*`, `PPIF_*`, `FMSG_*`, поля структур) и по истории `plugin.hpp` в upstream определить сборку FAR, где появилось самое новое из этого;
-  2. задать `MinFarVersion` явно (`MAKEFARVERSION(3,0,0,NNNN,VS_RELEASE)` в `src/version.hpp`) — после этого SDK можно обновлять без влияния на совместимость;
-  3. проверить плагин на FAR этой сборки;
-  4. при необходимости обновить `third_party/FarPluginSDK` до актуального upstream.
+- [x] **Минимальная версия FAR** — `MinFarVersion` = 3.0.3800 (`PLUGIN_MIN_FAR_BUILD` в `src/version.hpp`), не зависит от заголовков SDK (6666). Все используемые объявления `plugin.hpp` (экспорты, `FCTL_*`, `OPM_*`, `PPIF_*`, `DIF_*`/`DM_*` диалогов, `SCTL_*`/`FSSF_CONFIRMATIONS`, структуры, типы функций `PSI`/`FSF`) сверены по истории FarGroup/FarManager (311 версий, синонимы типов `GUID`/`UUID`, `__int64`/`long long` и т. п. считаются одинаковыми): такие же, как в 6666, начиная со сборки 3604 (2013-08: поле `Instance` в `GlobalInfo` и структурах экспортов; `GetGlobalInfoW` его пишет). Предыдущие по времени: 3040 `PluginPanelItem::UserData`, 2830 экспорты/`FarDialogItem`/`PanelInfo`, 2799 `FarGetPluginPanelItem`, 2462 `AnalyseW`/`CloseAnalyseW`. 3800 — stable-сборка, на которой проверяется; 3525 (предыдущая stable) — без `Instance`, не подходит. Проверено на FAR 3.0.3800 (открытие, извлечение, запись, подтверждения, Shift+F5/F6, области CP/M, один образ в двух панелях) — поведение FAR, которое по заголовкам не датируется. SDK можно обновлять независимо.
 - [x] **Автор и описание.** `GetGlobalInfoW`: автор Viktor Pykhonin, описание «Disk images of retro computers: browse and edit (CP/M, Agat, Apple II, FAT, RT-11 and others)».
 - [x] **Версия плагина.** 0.9.0, только в `src/version.hpp`; `CMakeLists.txt` берёт её оттуда для `project(DskTools VERSION …)`. Ресурс VERSIONINFO (`src/version.rc`) — версия, автор и лицензия в свойствах DLL.
 - [x] **Лицензия.** GPL-3.0-or-later, как у dsk_tools (линкуется статически): `LICENSE` — текст GPL-3.0 (совпадает с gnu.org), заголовки SPDX во всех своих исходниках, строка в VERSIONINFO. В README упомянуть сторонние части: заголовки FAR SDK (BSD-3 с исключением для плагинов), dsk_tools (GPL-3.0-or-later), тексты информационной панели из DISK Commander.

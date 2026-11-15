@@ -918,7 +918,7 @@ static std::wstring current_panel_file()
 extern "C" void WINAPI GetGlobalInfoW(struct GlobalInfo *Info)
 {
     Info->StructSize    = sizeof(GlobalInfo);
-    Info->MinFarVersion = FARMANAGERVERSION;
+    Info->MinFarVersion = MAKEFARVERSION(3, 0, 0, PLUGIN_MIN_FAR_BUILD, VS_RELEASE);
     Info->Version       = MAKEFARVERSION(PLUGIN_VERSION_MAJOR,
                                           PLUGIN_VERSION_MINOR,
                                           PLUGIN_VERSION_BUILD,
