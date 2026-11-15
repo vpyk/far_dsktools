@@ -19,6 +19,7 @@ struct PluginPanel
     std::vector<std::wstring>                     dirStack;     // displayed names of entered directories
     std::wstring                                  hostPath;
     std::wstring                                  title;        // " DskTools:<FS>:<image>"
+    std::wstring                                  panelTitle;   // title + " [R/O]" when writing is refused (build_info())
     std::string                                   formatId;     // detect_fdd_type() result, kept to
     std::string                                   typeId;       // reload the image and to pick a writer
     std::string                                   fsId;

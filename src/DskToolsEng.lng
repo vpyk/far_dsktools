@@ -192,6 +192,8 @@
 "Writing"
 //[MInfoWritable]
 "allowed"
+//[MTitleReadOnly]
+"[R/O]"
 //[MInfoGeometry]
 "Geometry"
 //[MGeoStandard]

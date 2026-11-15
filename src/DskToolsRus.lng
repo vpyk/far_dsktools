@@ -192,6 +192,8 @@
 "Запись"
 //[MInfoWritable]
 "разрешена"
+//[MTitleReadOnly]
+"[R/O]"
 //[MInfoGeometry]
 "Геометрия"
 //[MGeoStandard]

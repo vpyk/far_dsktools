@@ -101,6 +101,7 @@ enum LngId : int
     MInfoVolume,
     MInfoWrite,
     MInfoWritable,
+    MTitleReadOnly,
     MInfoGeometry,
     MGeoStandard,
     MGeoBoot,

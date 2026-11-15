@@ -1113,6 +1113,8 @@ static void build_info(PluginPanel &panel)
         add(msg(MInfoVolume), std::to_wstring(fs.get_volume_id()));
     std::wstring readOnly = read_only_reason(panel);
     add(msg(MInfoWrite), readOnly.empty() ? std::wstring(msg(MInfoWritable)) : readOnly);
+    // The panel title marks it too, rebuilt as rarely as these lines are
+    panel.panelTitle = readOnly.empty() ? panel.title : panel.title + L" " + msg(MTitleReadOnly);
 
     auto stats = fs.get_stats().int_values;
     panel.freeSize = 0;
@@ -1187,10 +1189,10 @@ extern "C" void WINAPI GetOpenPanelInfoW(struct OpenPanelInfo *Info)
     Info->HostFile         = it->second.hostPath.c_str();
     // Empty CurDir at the root lets FAR close the panel on ".." and return to the host file
     Info->CurDir           = it->second.currentDir == L"/" ? L"" : it->second.currentDir.c_str();
-    Info->Format           = title.c_str();
-    Info->PanelTitle       = title.c_str();
     if (!it->second.infoValid)
         build_info(it->second);
+    Info->Format           = title.c_str();
+    Info->PanelTitle       = it->second.panelTitle.c_str();
     Info->InfoLines        = it->second.infoLines.data();
     Info->InfoLinesNumber  = it->second.infoLines.size();
     Info->DescrFiles       = nullptr;
