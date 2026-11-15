@@ -1,5 +1,16 @@
 cmake_minimum_required(VERSION 3.25)
-project(MyFarPlugin VERSION 1.0.0 LANGUAGES CXX)
+
+# The version lives in src/version.hpp alone (GetGlobalInfoW takes it from there)
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/src/version.hpp" _version_lines REGEX "^#define PLUGIN_VERSION_")
+foreach(_part MAJOR MINOR BUILD)
+    string(REGEX MATCH "PLUGIN_VERSION_${_part} +([0-9]+)" _match "${_version_lines}")
+    if(NOT _match)
+        message(FATAL_ERROR "src/version.hpp: PLUGIN_VERSION_${_part} not found")
+    endif()
+    set(_version_${_part} "${CMAKE_MATCH_1}")
+endforeach()
+project(DskTools VERSION ${_version_MAJOR}.${_version_MINOR}.${_version_BUILD} LANGUAGES CXX)
+message(STATUS "DskTools ${PROJECT_VERSION}")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,6 +27,7 @@ add_library(plug SHARED
     src/plugin.cpp
     src/cpm_geometry.cpp
     src/plugin.def
+    src/version.rc
 )
 
 target_include_directories(plug PRIVATE

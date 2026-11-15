@@ -9,8 +9,8 @@
   2. задать `MinFarVersion` явно (`MAKEFARVERSION(3,0,0,NNNN,VS_RELEASE)` в `src/version.hpp`) — после этого SDK можно обновлять без влияния на совместимость;
   3. проверить плагин на FAR этой сборки;
   4. при необходимости обновить `third_party/FarPluginSDK` до актуального upstream.
-- [ ] **Автор и описание.** `GetGlobalInfoW`: `Author = L"Author"` — заглушка. Проверить `Description`.
-- [ ] **Версия плагина.** `src/version.hpp` (1.0.0) и `project(MyFarPlugin VERSION 1.0.0)` в `CMakeLists.txt` — выбрать версию и нормальное имя проекта.
+- [x] **Автор и описание.** `GetGlobalInfoW`: автор Viktor Pykhonin, описание «Disk images of retro computers: browse and edit (CP/M, Agat, Apple II, FAT, RT-11 and others)».
+- [x] **Версия плагина.** 0.9.0, только в `src/version.hpp`; `CMakeLists.txt` берёт её оттуда для `project(DskTools VERSION …)`. Ресурс VERSIONINFO (`src/version.rc`) — версия, автор и лицензия в свойствах DLL.
 - [ ] **Лицензия.** dsk_tools под GPL-3.0, статически линкуется — плагин тоже должен распространяться под GPL-3.0 (исключение в `plugin.hpp` касается только заголовков FAR). Добавить `LICENSE`.
 - [ ] **Комплект поставки.** x64 и x86 DLL с `DskToolsEng.lng`, `DskToolsRus.lng`, `DskToolsEng.hlf`, `DskToolsRus.hlf`, README (установка, поддерживаемые форматы, требование VC++ Redistributable 2015–2022 ≥ 14.44 нужной разрядности).
 

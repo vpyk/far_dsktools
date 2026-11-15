@@ -39,7 +39,7 @@ FAR3 file system plugin (плагин файловой системы) — a sha
 | `src/DskToolsEng.hlf`, `src/DskToolsRus.hlf` | Help (F1): one topic `@Contents` — what the plugin does and its keys (UTF-8 with BOM; `#…#` highlights, keys right-aligned as in FAR's own help) |
 | `src/cpm_geometry.hpp`, `.cpp` | CP/M geometry the plugin finds itself (boot sector parameter block, layouts tried on the directory); no FAR API, testable apart |
 | `src/info_tokens.hpp` | `{$TOKEN}` → `MTok_*` table for the info panel (texts from DISK Commander) |
-| `src/version.hpp` | `MAJOR.MINOR.BUILD` macros for `MAKEFARVERSION()` |
+| `src/version.hpp` | `MAJOR.MINOR.BUILD` macros for `MAKEFARVERSION()` — the one place of the version (0.9.0): `CMakeLists.txt` reads them for `project(DskTools VERSION …)`, `src/version.rc` for the DLL's VERSIONINFO (file properties: version, author, GPL-3.0-or-later) — so an include guard, not `#pragma once` |
 | `CMakeLists.txt` | SDK path via `FAR_SDK_PATH` (default `third_party/FarPluginSDK`), links `dsk_tools` static library (marked `SYSTEM`: no `/W4` warnings from its headers) |
 | `CMakePresets.json` | `x64` (main) and `x86` presets, MSVC 2022 |
 | `third_party/FarPluginSDK/` | FAR3 SDK C/C++ headers (`Headers.c/plugin.hpp`), build 6666, unmodified |

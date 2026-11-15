@@ -922,8 +922,8 @@ extern "C" void WINAPI GetGlobalInfoW(struct GlobalInfo *Info)
     static const UUID PluginUuid = PLUGIN_UUID;
     Info->Guid          = PluginUuid;
     Info->Title         = L"DskTools";
-    Info->Description   = L"Retro disk image browser (CP/M, DOS 3.3, Agat, FAT, ProDOS, RT-11)";
-    Info->Author        = L"Author";
+    Info->Description   = L"Disk images of retro computers: browse and edit (CP/M, Agat, Apple II, FAT, RT-11 and others)";
+    Info->Author        = L"Viktor Pykhonin";
     Info->Instance      = nullptr;
 }
 
