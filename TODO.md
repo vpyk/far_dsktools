@@ -11,7 +11,7 @@
   4. при необходимости обновить `third_party/FarPluginSDK` до актуального upstream.
 - [x] **Автор и описание.** `GetGlobalInfoW`: автор Viktor Pykhonin, описание «Disk images of retro computers: browse and edit (CP/M, Agat, Apple II, FAT, RT-11 and others)».
 - [x] **Версия плагина.** 0.9.0, только в `src/version.hpp`; `CMakeLists.txt` берёт её оттуда для `project(DskTools VERSION …)`. Ресурс VERSIONINFO (`src/version.rc`) — версия, автор и лицензия в свойствах DLL.
-- [ ] **Лицензия.** dsk_tools под GPL-3.0, статически линкуется — плагин тоже должен распространяться под GPL-3.0 (исключение в `plugin.hpp` касается только заголовков FAR). Добавить `LICENSE`.
+- [x] **Лицензия.** GPL-3.0-or-later, как у dsk_tools (линкуется статически): `LICENSE` — текст GPL-3.0 (совпадает с gnu.org), заголовки SPDX во всех своих исходниках, строка в VERSIONINFO. В README упомянуть сторонние части: заголовки FAR SDK (BSD-3 с исключением для плагинов), dsk_tools (GPL-3.0-or-later), тексты информационной панели из DISK Commander.
 - [ ] **Комплект поставки.** x64 и x86 DLL с `DskToolsEng.lng`, `DskToolsRus.lng`, `DskToolsEng.hlf`, `DskToolsRus.hlf`, README (установка, поддерживаемые форматы, требование VC++ Redistributable 2015–2022 ≥ 14.44 нужной разрядности).
 
 - [x] **GUID плагина** — заглушка из шаблона заменена на `{A800155E-D7FA-4A2F-B529-75F2F0AE2CEF}`; больше не менять.

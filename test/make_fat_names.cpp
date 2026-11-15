@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Viktor Pykhonin
+// Part of DskTools, a FAR Manager plugin for disk images of retro computers
 // Builds a 1.44 MB FAT12 image with nested directories and names Windows cannot store,
 // then lists it back recursively through dsk_tools.
 #include <dsk_tools/dsk_tools.h>

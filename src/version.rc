@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Viktor Pykhonin
+// Part of DskTools, a FAR Manager plugin for disk images of retro computers
 // VERSIONINFO of DskTools.dll (file properties in Explorer); the numbers come from version.hpp
 #include <winres.h>
 #include "version.hpp"

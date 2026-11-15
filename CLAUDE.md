@@ -44,6 +44,7 @@ FAR3 file system plugin (плагин файловой системы) — a sha
 | `CMakePresets.json` | `x64` (main) and `x86` presets, MSVC 2022 |
 | `third_party/FarPluginSDK/` | FAR3 SDK C/C++ headers (`Headers.c/plugin.hpp`), build 6666, unmodified |
 | `third_party/dsk_tools/` | dsk_tools static library (GPL-3.0), built as subdirectory |
+| `LICENSE` | GPL-3.0 (the plugin links dsk_tools, GPL-3.0-or-later, statically); every own source file starts with `SPDX-License-Identifier: GPL-3.0-or-later`, `Copyright (C) 2026 Viktor Pykhonin` and `Part of DskTools…` (`//`, `;` in `.def`, `#` in CMake; not in `.lng`/`.hlf`, which FAR parses) |
 | `TODO.md` | Open tasks, incl. the pre-release `MinFarVersion` decision — keep it updated |
 | `test/` | Test images and their generators: `cpm_users.kdi` (CP/M user areas), `fat_names.img` (nested FAT dirs, Windows-invalid names) |
 | `.gitattributes` | `*.kdi`, `*.img` binary; FAR SDK headers stored byte for byte (`-text`) |

@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Viktor Pykhonin
+# Part of DskTools, a FAR Manager plugin for disk images of retro computers
+
 cmake_minimum_required(VERSION 3.25)
 
 # The version lives in src/version.hpp alone (GetGlobalInfoW takes it from there)

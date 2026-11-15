@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Viktor Pykhonin
+// Part of DskTools, a FAR Manager plugin for disk images of retro computers
 // Builds a Korvet CP/M image with files in several user areas, then reads it back.
 #include <dsk_tools/dsk_tools.h>
 #include <algorithm>

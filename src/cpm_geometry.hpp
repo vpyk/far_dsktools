@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Viktor Pykhonin
+// Part of DskTools, a FAR Manager plugin for disk images of retro computers
 // CP/M disk geometry the plugin finds itself, when dsk_tools' detection gets it wrong:
 // from the parameter block in the boot sector, or by trying layouts on the directory.
 // No FAR API here, so that it can be tested apart from the plugin.

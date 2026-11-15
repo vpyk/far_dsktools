@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Viktor Pykhonin
+// Part of DskTools, a FAR Manager plugin for disk images of retro computers
+
 #include "plugin.hpp"
 #include "lang.hpp"
 #include "info_tokens.hpp"
