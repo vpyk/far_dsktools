@@ -22,6 +22,10 @@
 
 Для CP/M плагин сам находит геометрию диска: по таблице параметров в загрузочном секторе (Орион, Корвет, Вектор) или подбором по каталогу, если по расширению и размеру файла она определяется неверно. Открываются и образы с обрезанным пустым концом; при записи файл растёт только до записанных данных. Области пользователя CP/M 1–31 показываются папками `USER_01`…`USER_31`.
 
+### Внутренняя работа с образами
+
+Описание внутренней работы с образами находится в [IMAGE_HANDLING.md](IMAGE_HANDLING.md).
+
 ### Клавиши
 
 | Действие | Клавиши |
@@ -105,6 +109,10 @@ File formats: raw sector images (`.dsk`, `.do`, `.po`, `.cpm`, `.kdi`, `.odi`, `
 Only **raw images** can be written — the image file is saved right after every operation. HFE, MFM/NIB/NIC, AIM, IMD and images with a header open read-only: writing them would re-encode every track. When writing is refused the panel title ends with `[R/O]`, and the info panel (Ctrl+L) tells why.
 
 For CP/M the plugin finds the disk geometry itself: from the parameter block in the boot sector (Orion, Korvet, Vector) or by trying layouts on the directory, where the file's extension and size alone would pick a wrong one. Images with the empty end cut off open too; writing grows the file only as far as the data. CP/M user areas 1–31 are shown as folders `USER_01`…`USER_31`.
+
+### Internal image-handling details
+
+See [IMAGE_HANDLING.md](IMAGE_HANDLING.md) for the internal image-handling details.
 
 ### Keys
 
