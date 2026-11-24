@@ -24,7 +24,7 @@
 
 ### Внутренняя работа с образами
 
-Описание внутренней работы с образами находится в [IMAGE_HANDLING.md](IMAGE_HANDLING.md).
+Описание внутренней работы с образами находится в [IMAGE_HANDLING.md](https://github.com/vpyk/far_dsktools/blob/main/IMAGE_HANDLING.md).
 
 ### Клавиши
 
@@ -112,7 +112,7 @@ For CP/M the plugin finds the disk geometry itself: from the parameter block in 
 
 ### Internal image-handling details
 
-See [IMAGE_HANDLING.md](IMAGE_HANDLING.md) for the internal image-handling details.
+See [IMAGE_HANDLING.md](https://github.com/vpyk/far_dsktools/blob/main/IMAGE_HANDLING.md) for the internal image-handling details.
 
 ### Keys
 
